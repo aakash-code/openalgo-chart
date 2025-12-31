@@ -1504,6 +1504,19 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
     }));
   }, [activeChartId]);
 
+  // Handler for applying indicators from active chart to all charts
+  const applyIndicatorsToAllCharts = useCallback(() => {
+    setCharts(prev => {
+      const sourceChart = prev.find(c => c.id === activeChartId);
+      if (!sourceChart) return prev;
+
+      return prev.map(chart => ({
+        ...chart,
+        indicators: { ...sourceChart.indicators }
+      }));
+    });
+  }, [activeChartId]);
+
   // Handler for removing indicator from pane (called from ChartComponent)
   const handleIndicatorRemove = (indicatorType) => {
     setCharts(prev => prev.map(chart => {
@@ -2668,6 +2681,8 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
         theme={theme}
         indicators={activeChart.indicators}
         onIndicatorSettingsChange={updateIndicatorSettings}
+        onApplyToAllCharts={applyIndicatorsToAllCharts}
+        chartCount={charts.length}
       />
       <LayoutTemplateDialog
         isOpen={isTemplateDialogOpen}

@@ -338,6 +338,23 @@
     cursor: not-allowed;
 }
 
+.applyAllButton {
+    padding: 8px 16px;
+    border-radius: 4px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    background-color: var(--accent-color, #2962ff);
+    border: none;
+    color: #fff;
+    margin-right: auto;
+    transition: background-color 0.2s;
+}
+
+.applyAllButton:hover {
+    background-color: #1e53e4;
+}
+
 /* Light theme overrides */
 .light {
     --background-primary: #ffffff;

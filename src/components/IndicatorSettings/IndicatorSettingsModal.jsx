@@ -97,7 +97,7 @@ const INDICATOR_CONFIG = {
   firstCandle: {
     name: 'First Red Candle',
     shortName: 'FRC',
-    description: '5-min only: Marks first RED candle of day, shows its high/low as support/resistance',
+    description: 'Uses 5-min data: Marks first RED candle of day, shows its high/low on any timeframe',
     fields: [
       { key: 'highlightColor', label: 'Marker Color', type: 'color' },
       { key: 'highLineColor', label: 'High Line Color', type: 'color' },
@@ -272,6 +272,8 @@ const IndicatorSettingsModal = ({
   theme = 'dark',
   indicators,
   onIndicatorSettingsChange,
+  onApplyToAllCharts,
+  chartCount = 1,
 }) => {
   const [activeSection, setActiveSection] = useState('moving-averages');
   const [localIndicators, setLocalIndicators] = useState(indicators);
@@ -390,6 +392,18 @@ const IndicatorSettingsModal = ({
 
         {/* Footer */}
         <div className={styles.footer}>
+          {chartCount > 1 && (
+            <button
+              className={styles.applyAllButton}
+              onClick={() => {
+                onIndicatorSettingsChange?.(localIndicators);
+                onApplyToAllCharts?.();
+                onClose();
+              }}
+            >
+              Apply to All Charts
+            </button>
+          )}
           <button className={styles.cancelButton} onClick={handleCancel}>
             Cancel
           </button>
