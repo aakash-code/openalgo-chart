@@ -396,6 +396,13 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
   // Sector Heatmap Modal State
   const [isSectorHeatmapOpen, setIsSectorHeatmapOpen] = useState(false);
 
+  // Chart Sync with Position Flow State
+  const [chartSyncConfig, setChartSyncConfig] = useState({
+    enabled: false,
+    gainersCount: 0,
+    losersCount: 0
+  });
+
   // Persist position tracker settings
   useEffect(() => {
     try {
@@ -413,6 +420,51 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
   // Toggle OI Lines handler
   const handleToggleOILines = useCallback(() => {
     setShowOILines(prev => !prev);
+  }, []);
+
+  // Handler to sync charts with Position Flow rankings
+  const syncChartsWithRankings = useCallback((rankedData, config) => {
+    if (!config.enabled) return;
+
+    const { gainersCount, losersCount } = config;
+
+    // Get top gainers (sorted by percentChange desc, positive only)
+    const gainers = rankedData
+      .filter(item => item.percentChange > 0)
+      .sort((a, b) => b.percentChange - a.percentChange)
+      .slice(0, gainersCount);
+
+    // Get top losers (sorted by percentChange asc, negative only)
+    const losers = rankedData
+      .filter(item => item.percentChange < 0)
+      .sort((a, b) => a.percentChange - b.percentChange)
+      .slice(0, losersCount);
+
+    // Combine: gainers first, then losers
+    const symbolsToShow = [...gainers, ...losers];
+
+    // Update charts array
+    setCharts(prev => prev.map((chart, index) => {
+      const rankData = symbolsToShow[index];
+      if (!rankData) return chart;
+
+      // Only update if symbol changed
+      if (chart.symbol === rankData.symbol && chart.exchange === rankData.exchange) {
+        return chart;
+      }
+
+      return {
+        ...chart,
+        symbol: rankData.symbol,
+        exchange: rankData.exchange,
+        strategyConfig: null // Clear any strategy when switching
+      };
+    }));
+  }, []);
+
+  // Handler to update chart sync configuration
+  const handleChartSyncConfigChange = useCallback((newConfig) => {
+    setChartSyncConfig(newConfig);
   }, []);
 
   // Theme State
@@ -2570,6 +2622,10 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
                 ));
               }}
               isAuthenticated={isAuthenticated}
+              chartSyncConfig={chartSyncConfig}
+              onChartSyncConfigChange={handleChartSyncConfigChange}
+              onRankingsUpdate={syncChartsWithRankings}
+              chartCount={charts.length}
             />
           ) : null
         }

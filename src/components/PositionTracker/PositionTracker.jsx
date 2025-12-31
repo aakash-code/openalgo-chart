@@ -45,6 +45,11 @@ const PositionTracker = ({
   onCustomSymbolsChange,
   onSymbolSelect,
   isAuthenticated,
+  // Chart Sync props
+  chartSyncConfig,
+  onChartSyncConfigChange,
+  onRankingsUpdate,
+  chartCount,
 }) => {
   const [showAddSymbol, setShowAddSymbol] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -158,6 +163,13 @@ const PositionTracker = ({
       openingRanksRef.current.clear();
     }
   }, [marketState.isOpen, rankedData]);
+
+  // Sync charts with rankings when enabled
+  useEffect(() => {
+    if (chartSyncConfig?.enabled && rankedData.length > 0 && onRankingsUpdate) {
+      onRankingsUpdate(rankedData, chartSyncConfig);
+    }
+  }, [rankedData, chartSyncConfig, onRankingsUpdate]);
 
   // Calculate rank change from opening and volume spike detection
   const displayData = useMemo(() => {
@@ -300,6 +312,9 @@ const PositionTracker = ({
         marketStatus={marketState.status}
         isMarketOpen={marketState.isOpen}
         symbolCount={rankedData.length}
+        chartSyncConfig={chartSyncConfig}
+        onChartSyncConfigChange={onChartSyncConfigChange}
+        chartCount={chartCount}
       />
 
       {/* Filter Tabs */}
