@@ -27,6 +27,7 @@ import {
 } from '../../utils/indicators';
 import { calculateTPO } from '../../utils/indicators/tpo';
 import { calculateFirstCandle } from '../../utils/indicators/firstCandle';
+import { useFirstRedCandle } from '../../hooks/useFirstRedCandle';
 import { calculatePriceActionRange } from '../../utils/indicators/priceActionRange';
 import { TPOProfilePrimitive } from '../../plugins/tpo-profile/TPOProfilePrimitive';
 import { calculateHeikinAshi } from '../../utils/chartUtils';
@@ -213,6 +214,20 @@ const ChartComponent = forwardRef(({
     useEffect(() => { intervalRef.current = interval; }, [interval]);
     useEffect(() => { indicatorsRef.current = indicators; }, [indicators]);
 
+    // First Red Candle hook - fetches 5-minute data independently
+    // This allows FRC lines to be visible on any chart timeframe
+    const frcConfig = indicators?.firstCandle;
+    const { levels: frcLevels, isLoading: frcLoading } = useFirstRedCandle(
+        symbol,
+        exchange,
+        frcConfig?.enabled,
+        {
+            highlightColor: frcConfig?.highlightColor || '#FFD700',
+            highLineColor: frcConfig?.highLineColor || '#ef5350',
+            lowLineColor: frcConfig?.lowLineColor || '#26a69a'
+        }
+    );
+
     // ============================================
     // CONFIGURABLE CHART CONSTANTS
     // ============================================
@@ -245,12 +260,20 @@ const ChartComponent = forwardRef(({
             const timeScale = chartRef.current.timeScale();
             timeScale.applyOptions({ rightOffset: DEFAULT_RIGHT_OFFSET });
 
-            // If we have fewer candles than the window, use fitContent to fill the visible area
-            // This prevents empty space on the left when data is limited
-            if (inferredLength < candleWindow) {
-                timeScale.fitContent();
-            } else {
-                timeScale.setVisibleLogicalRange({ from, to });
+            // Always use fitContent first to ensure data fills visible area
+            // This prevents empty gaps on left for charts with sparse data (like indices)
+            timeScale.fitContent();
+
+            // Then zoom to show the most recent candles if we have enough data
+            if (inferredLength >= candleWindow) {
+                // Use setTimeout to ensure fitContent completes first
+                setTimeout(() => {
+                    try {
+                        timeScale.setVisibleLogicalRange({ from, to });
+                    } catch (e) {
+                        // Ignore - fitContent already worked
+                    }
+                }, 0);
             }
         } catch (err) {
             console.warn('Failed to apply default candle position', err);
@@ -2485,24 +2508,17 @@ const ChartComponent = forwardRef(({
             }
         }
 
-        // ========== FIRST CANDLE INDICATOR (5-min only - Lines + Markers for ALL days) ==========
+        // ========== FIRST CANDLE INDICATOR (Uses 5-min data via hook - Works on ALL timeframes) ==========
         const firstCandleConfig = indicatorsConfig.firstCandle;
-        const is5MinChart = intervalRef.current === '5' || intervalRef.current === '5m';
 
-        if (firstCandleConfig?.enabled && is5MinChart) {
+        // Use frcLevels from useFirstRedCandle hook (fetches 5-min data independently)
+        if (firstCandleConfig?.enabled && frcLevels?.allLevels) {
             const highLineColor = firstCandleConfig.highLineColor || '#ef5350';
             const lowLineColor = firstCandleConfig.lowLineColor || '#26a69a';
 
-            const result = calculateFirstCandle(data, {
-                highlightColor: firstCandleConfig.highlightColor || '#FFD700',
-                signalColor: highLineColor,
-                highLineColor: highLineColor,
-                lowLineColor: lowLineColor
-            });
-
             // Remove old line series if count changed
             const existingCount = firstCandleSeriesRef.current.length;
-            const neededCount = result.allLevels.length * 2; // 2 lines per day (high + low)
+            const neededCount = frcLevels.allLevels.length * 2; // 2 lines per day (high + low)
 
             if (existingCount !== neededCount) {
                 // Remove all existing series
@@ -2515,11 +2531,14 @@ const ChartComponent = forwardRef(({
             }
 
             // Create/update line series for each day's high and low
-            if (result.allLevels && result.allLevels.length > 0 && canAddSeries) {
+            if (frcLevels.allLevels.length > 0 && canAddSeries) {
                 let seriesIndex = 0;
 
-                for (const level of result.allLevels) {
+                for (const level of frcLevels.allLevels) {
                     const { high, low, startTime, endTime } = level;
+
+                    // Skip if startTime equals endTime (only one candle - would cause duplicate timestamp error)
+                    if (startTime === endTime) continue;
 
                     // High line series for this day
                     if (!firstCandleSeriesRef.current[seriesIndex]) {
@@ -2560,7 +2579,7 @@ const ChartComponent = forwardRef(({
             }
 
         } else {
-            // Remove all first candle line series when disabled or not 5-min chart
+            // Remove all first candle line series when disabled
             for (const series of firstCandleSeriesRef.current) {
                 try {
                     chartRef.current.removeSeries(series);
@@ -2601,6 +2620,9 @@ const ChartComponent = forwardRef(({
 
                 for (const level of parResult.allLevels) {
                     const { type, value, startTime, endTime, color } = level;
+
+                    // Skip if startTime equals endTime (would cause duplicate timestamp error)
+                    if (startTime === endTime) continue;
 
                     // Create or update line series
                     if (!priceActionRangeSeriesRef.current[parSeriesIndex]) {
@@ -2920,7 +2942,7 @@ const ChartComponent = forwardRef(({
             });
         }
 
-    }, []); // Empty dependency array - indicators passed as parameter
+    }, [frcLevels]); // Depend on frcLevels from useFirstRedCandle hook
 
     // ========== OI LINES EFFECT (Max Call OI, Max Put OI, Max Pain) ==========
     useEffect(() => {

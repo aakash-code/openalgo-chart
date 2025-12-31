@@ -1,7 +1,8 @@
 /**
  * First Red Candle Indicator
- * Identifies the first RED candle after market open (9:15 AM IST) on 5-minute charts,
- * tracks its high/low for stop loss levels.
+ * Identifies the first RED candle after market open (9:15 AM IST) using 5-minute data.
+ * Tracks its high/low for stop loss levels.
+ * Works on any chart timeframe - data is fetched independently via useFirstRedCandle hook.
  */
 
 /**

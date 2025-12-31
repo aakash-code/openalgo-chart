@@ -34,3 +34,6 @@ export {
 
 // Global keyboard shortcuts
 export { useGlobalShortcuts } from './useGlobalShortcuts';
+
+// First Red Candle strategy hook
+export { useFirstRedCandle } from './useFirstRedCandle';
