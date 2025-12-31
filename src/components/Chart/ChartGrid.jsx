@@ -18,6 +18,12 @@ const ChartGrid = ({
             case '2': return styles.grid2;
             case '3': return styles.grid3;
             case '4': return styles.grid4;
+            case '5': return styles.grid5;
+            case '6': return styles.grid6;
+            case '7': return styles.grid7;
+            case '8': return styles.grid8;
+            case '9': return styles.grid9;
+            case '10': return styles.grid10;
             default: return styles.grid1;
         }
     };

@@ -775,6 +775,30 @@ const Topbar = ({
                                                                 <span className={styles.icon}><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28" width="28" height="28"><path fill="currentColor" d="M3 3h10v10H3V3zm12 0h10v10H15V3zM3 15h10v10H3V15zm12 0h10v10H15V15z"></path></svg></span>
                                                                 <span>4 Charts</span>
                                                             </div>
+                                                            <div className={classNames(styles.dropdownItem, styles.withIcon, { [styles.active]: layout === '5' })} onClick={() => { onLayoutChange('5'); setShowLayoutMenu(false); }}>
+                                                                <span className={styles.icon}><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28" width="28" height="28"><path fill="currentColor" d="M3 3h6v10H3V3zm8 0h6v10h-6V3zm8 0h6v10h-6V3zM3 15h9v10H3V15zm11 0h11v10H14V15z"></path></svg></span>
+                                                                <span>5 Charts</span>
+                                                            </div>
+                                                            <div className={classNames(styles.dropdownItem, styles.withIcon, { [styles.active]: layout === '6' })} onClick={() => { onLayoutChange('6'); setShowLayoutMenu(false); }}>
+                                                                <span className={styles.icon}><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28" width="28" height="28"><path fill="currentColor" d="M3 3h6v10H3V3zm8 0h6v10h-6V3zm8 0h6v10h-6V3zM3 15h6v10H3V15zm8 0h6v10h-6V15zm8 0h6v10h-6V15z"></path></svg></span>
+                                                                <span>6 Charts</span>
+                                                            </div>
+                                                            <div className={classNames(styles.dropdownItem, styles.withIcon, { [styles.active]: layout === '7' })} onClick={() => { onLayoutChange('7'); setShowLayoutMenu(false); }}>
+                                                                <span className={styles.icon}><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28" width="28" height="28"><path fill="currentColor" d="M3 3h4.5v10H3V3zm6 0h4.5v10H9V3zm6 0h4.5v10H15V3zm6 0h4v10h-4V3zM3 15h6v10H3V15zm8 0h6v10h-6V15zm8 0h6v10h-6V15z"></path></svg></span>
+                                                                <span>7 Charts</span>
+                                                            </div>
+                                                            <div className={classNames(styles.dropdownItem, styles.withIcon, { [styles.active]: layout === '8' })} onClick={() => { onLayoutChange('8'); setShowLayoutMenu(false); }}>
+                                                                <span className={styles.icon}><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28" width="28" height="28"><path fill="currentColor" d="M3 3h4.5v10H3V3zm6 0h4.5v10H9V3zm6 0h4.5v10H15V3zm6 0h4v10h-4V3zM3 15h4.5v10H3V15zm6 0h4.5v10H9V15zm6 0h4.5v10H15V15zm6 0h4v10h-4V15z"></path></svg></span>
+                                                                <span>8 Charts</span>
+                                                            </div>
+                                                            <div className={classNames(styles.dropdownItem, styles.withIcon, { [styles.active]: layout === '9' })} onClick={() => { onLayoutChange('9'); setShowLayoutMenu(false); }}>
+                                                                <span className={styles.icon}><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28" width="28" height="28"><path fill="currentColor" d="M3 3h6v6H3V3zm8 0h6v6h-6V3zm8 0h6v6h-6V3zM3 11h6v6H3v-6zm8 0h6v6h-6v-6zm8 0h6v6h-6v-6zM3 19h6v6H3v-6zm8 0h6v6h-6v-6zm8 0h6v6h-6v-6z"></path></svg></span>
+                                                                <span>9 Charts</span>
+                                                            </div>
+                                                            <div className={classNames(styles.dropdownItem, styles.withIcon, { [styles.active]: layout === '10' })} onClick={() => { onLayoutChange('10'); setShowLayoutMenu(false); }}>
+                                                                <span className={styles.icon}><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28" width="28" height="28"><path fill="currentColor" d="M3 3h3.5v10H3V3zm5 0h3.5v10H8V3zm5 0h3.5v10h-3.5V3zm5 0h3.5v10h-3.5V3zm5 0h2v10h-2V3zM3 15h3.5v10H3V15zm5 0h3.5v10H8V15zm5 0h3.5v10h-3.5V15zm5 0h3.5v10h-3.5V15zm5 0h2v10h-2V15z"></path></svg></span>
+                                                                <span>10 Charts</span>
+                                                            </div>
                                                         </div>
                                                     )}
                                                 </div>
