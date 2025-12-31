@@ -62,7 +62,7 @@ export const SECTOR_MAP = {
   'NMDC': 'Metal',
   'HINDZINC': 'Metal',
 
-  // Industrial (16 stocks)
+  // Industrial (17 stocks)
   'CUMMINSIND': 'Industrial',
   'SUPREMEIND': 'Industrial',
   'BHARATFORG': 'Industrial',
@@ -79,6 +79,7 @@ export const SECTOR_MAP = {
   'ASTRAL': 'Industrial',
   'INOXWIND': 'Industrial',
   'CGPOWER': 'Industrial',
+  'LT': 'Industrial',
 
   // Bank (18 stocks) - Pure Banking Only
   'SBIN': 'Bank',

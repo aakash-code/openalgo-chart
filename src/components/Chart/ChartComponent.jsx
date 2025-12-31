@@ -119,6 +119,7 @@ const ChartComponent = forwardRef(({
     onOpenOptionChain, // Callback to open option chain for current symbol
     oiLines = null, // { maxCallOI, maxPutOI, maxPain } - OI levels to display as price lines
     showOILines = false, // Whether to show OI lines
+    showTodayOnly = false, // For synced charts: show only today's intraday data
 }, ref) => {
     const chartContainerRef = useRef();
     const [isLoading, setIsLoading] = useState(true);
@@ -239,42 +240,99 @@ const ChartComponent = forwardRef(({
     // Loading state for scroll-back (shows subtle indicator)
     const [isLoadingOlderData, setIsLoadingOlderData] = useState(false);
 
-    const applyDefaultCandlePosition = (explicitLength, candleWindow = DEFAULT_CANDLE_WINDOW) => {
+    // Helper to find today's start index in data
+    const findTodayStartIndex = (data) => {
+        if (!data || data.length === 0) return 0;
+
+        // Get today's date at market open (9:15 AM IST)
+        // Data timestamps are UTC + IST_OFFSET (19800 seconds)
+        const now = new Date();
+        const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 9, 15, 0);
+        const IST_OFFSET_SECONDS = 19800;
+        // Convert local time to match data timestamp format (UTC + IST offset)
+        const todayStartTimestamp = Math.floor(todayStart.getTime() / 1000) + IST_OFFSET_SECONDS;
+
+        // Find first candle from today
+        for (let i = 0; i < data.length; i++) {
+            if (data[i].time >= todayStartTimestamp) {
+                return i;
+            }
+        }
+        // If no today's data, return last few candles
+        return Math.max(0, data.length - 50);
+    };
+
+    const applyDefaultCandlePosition = (explicitLength, candleWindow = DEFAULT_CANDLE_WINDOW, showTodayOnly = false) => {
         if (!chartRef.current) return;
 
+        const data = dataRef.current || [];
         const inferredLength = Number.isFinite(explicitLength)
             ? explicitLength
-            : (mainSeriesRef.current?.data()?.length ?? 0);
+            : (mainSeriesRef.current?.data()?.length ?? data.length ?? 0);
 
         if (!inferredLength || inferredLength <= 0) {
             return;
         }
 
-        // Calculate from/to at top level for both branches and setDefaultRange
         const lastIndex = Math.max(inferredLength - 1, 0);
-        const effectiveWindow = Math.min(candleWindow, inferredLength);
         const to = lastIndex + DEFAULT_RIGHT_OFFSET;
-        const from = to - effectiveWindow;
+        let from;
+
+        if (showTodayOnly && data.length > 0) {
+            // For synced charts: show only today's intraday data
+            const todayStartIndex = findTodayStartIndex(data);
+            const todayCandleCount = data.length - todayStartIndex;
+
+            // Ensure we have at least some candles to show
+            if (todayCandleCount > 0 && todayStartIndex < data.length) {
+                // Calculate visible range from today's start
+                from = todayStartIndex;
+                // If too many candles, limit to candleWindow from the end
+                if (todayCandleCount > candleWindow) {
+                    from = lastIndex - candleWindow + 1;
+                }
+            } else {
+                // Fallback: show last 50 candles if no today's data
+                from = Math.max(0, lastIndex - 50);
+            }
+        } else {
+            // Normal behavior: show last N candles
+            const effectiveWindow = Math.min(candleWindow, inferredLength);
+            from = to - effectiveWindow;
+        }
 
         try {
             const timeScale = chartRef.current.timeScale();
             timeScale.applyOptions({ rightOffset: DEFAULT_RIGHT_OFFSET });
 
-            // Always use fitContent first to ensure data fills visible area
-            // This prevents empty gaps on left for charts with sparse data (like indices)
+            // First fitContent to ensure all data is visible
             timeScale.fitContent();
 
-            // Then zoom to show the most recent candles if we have enough data
-            if (inferredLength >= candleWindow) {
-                // Use setTimeout to ensure fitContent completes first
-                setTimeout(() => {
+            // Set visible range after a short delay to ensure chart is ready
+            setTimeout(() => {
+                try {
+                    if (!chartRef.current) return;
+                    timeScale.setVisibleLogicalRange({ from, to });
+                    chartRef.current.priceScale('right').applyOptions({ autoScale: true });
+
+                    // Double-check positioning after another delay
+                    setTimeout(() => {
+                        try {
+                            if (!chartRef.current) return;
+                            chartRef.current.priceScale('right').applyOptions({ autoScale: true });
+                        } catch (e) {
+                            // Ignore
+                        }
+                    }, 100);
+                } catch (e) {
+                    // Fallback to fitContent if setVisibleLogicalRange fails
                     try {
-                        timeScale.setVisibleLogicalRange({ from, to });
-                    } catch (e) {
-                        // Ignore - fitContent already worked
+                        timeScale.fitContent();
+                    } catch (err) {
+                        // Ignore
                     }
-                }, 0);
-            }
+                }
+            }, 200);
         } catch (err) {
             console.warn('Failed to apply default candle position', err);
         }
@@ -1945,7 +2003,8 @@ const ChartComponent = forwardRef(({
                     });
 
                     // Apply fixed candle window for consistent zoom across all timeframes
-                    applyDefaultCandlePosition(transformedData.length, DEFAULT_CANDLE_WINDOW);
+                    // For synced charts, show only today's intraday data
+                    applyDefaultCandlePosition(transformedData.length, DEFAULT_CANDLE_WINDOW, showTodayOnly);
 
                     setTimeout(() => {
                         if (!cancelled) {
@@ -2162,6 +2221,34 @@ const ChartComponent = forwardRef(({
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [symbol, exchange, interval, strategyConfig]);
+
+    // Re-apply chart positioning after loading completes
+    // This catches any charts that missed initial positioning (e.g., during multi-chart sync)
+    useEffect(() => {
+        if (!isLoading && chartRef.current && dataRef.current?.length > 0) {
+            // Use longer delay for synced charts to ensure data is fully rendered
+            const delay = showTodayOnly ? 400 : 250;
+            const timer = setTimeout(() => {
+                applyDefaultCandlePosition(dataRef.current.length, DEFAULT_CANDLE_WINDOW, showTodayOnly);
+            }, delay);
+
+            // For synced charts, apply positioning again after a longer delay
+            // to handle any race conditions with chart rendering
+            let secondTimer;
+            if (showTodayOnly) {
+                secondTimer = setTimeout(() => {
+                    if (chartRef.current && dataRef.current?.length > 0) {
+                        applyDefaultCandlePosition(dataRef.current.length, DEFAULT_CANDLE_WINDOW, showTodayOnly);
+                    }
+                }, 800);
+            }
+
+            return () => {
+                clearTimeout(timer);
+                if (secondTimer) clearTimeout(secondTimer);
+            };
+        }
+    }, [isLoading, symbol, showTodayOnly]);
 
     const emaLastValueRef = useRef(null);
 

@@ -11,6 +11,7 @@ const ChartGrid = ({
     onAlertsSync,
     onAlertTriggered,
     onReplayModeChange,
+    isSyncEnabled = false,
     ...chartProps
 }) => {
     const getGridClass = () => {
@@ -52,8 +53,7 @@ const ChartGrid = ({
                         indicators={chart.indicators}
                         comparisonSymbols={chart.comparisonSymbols}
                         strategyConfig={chart.strategyConfig}
-                    // Override props that might be specific to the chart state if needed
-                    // symbol/interval/indicators/strategyConfig are per-chart.
+                        showTodayOnly={isSyncEnabled}
                     />
                 </div>
             ))}

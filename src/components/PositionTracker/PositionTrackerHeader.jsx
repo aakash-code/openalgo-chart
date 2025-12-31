@@ -2,6 +2,7 @@ import React, { memo, useState } from 'react';
 import classNames from 'classnames';
 import { TrendingUp, Link2, Square } from 'lucide-react';
 import styles from './PositionTrackerHeader.module.css';
+import { SECTORS } from './sectorMapping';
 
 const PositionTrackerHeader = memo(({
   sourceMode,
@@ -17,6 +18,10 @@ const PositionTrackerHeader = memo(({
   const [showSyncPanel, setShowSyncPanel] = useState(false);
   const [localGainersCount, setLocalGainersCount] = useState(Math.floor(chartCount / 2));
   const [localLosersCount, setLocalLosersCount] = useState(Math.ceil(chartCount / 2));
+  const [localSector, setLocalSector] = useState('All');
+  const [localMinPercent, setLocalMinPercent] = useState(0);
+  const [localMinVolume, setLocalMinVolume] = useState(0);
+  const [localRefreshInterval, setLocalRefreshInterval] = useState(0);
 
   const isSyncEnabled = chartSyncConfig?.enabled;
   const totalSelected = localGainersCount + localLosersCount;
@@ -26,7 +31,11 @@ const PositionTrackerHeader = memo(({
     onChartSyncConfigChange?.({
       enabled: true,
       gainersCount: localGainersCount,
-      losersCount: localLosersCount
+      losersCount: localLosersCount,
+      sector: localSector,
+      minPercentChange: localMinPercent,
+      minVolume: localMinVolume,
+      refreshInterval: localRefreshInterval
     });
     setShowSyncPanel(false);
   };
@@ -115,6 +124,55 @@ const PositionTrackerHeader = memo(({
           {/* Sync Configuration Panel */}
           {showSyncPanel && !isSyncEnabled && (
             <div className={styles.syncPanel}>
+              <div className={styles.syncRow}>
+                <label>Sector:</label>
+                <select
+                  value={localSector}
+                  onChange={(e) => setLocalSector(e.target.value)}
+                  className={styles.syncSelect}
+                >
+                  {SECTORS.map(sector => (
+                    <option key={sector} value={sector}>{sector}</option>
+                  ))}
+                </select>
+              </div>
+              <div className={styles.syncRow}>
+                <label>Min %:</label>
+                <input
+                  type="number"
+                  value={localMinPercent}
+                  onChange={(e) => setLocalMinPercent(Number(e.target.value))}
+                  className={styles.syncInput}
+                  min="0"
+                  step="0.5"
+                  placeholder="0"
+                />
+              </div>
+              <div className={styles.syncRow}>
+                <label>Min Vol:</label>
+                <input
+                  type="number"
+                  value={localMinVolume}
+                  onChange={(e) => setLocalMinVolume(Number(e.target.value))}
+                  className={styles.syncInput}
+                  min="0"
+                  step="10000"
+                  placeholder="0"
+                />
+              </div>
+              <div className={styles.syncRow}>
+                <label>Refresh:</label>
+                <select
+                  value={localRefreshInterval}
+                  onChange={(e) => setLocalRefreshInterval(Number(e.target.value))}
+                  className={styles.syncSelect}
+                >
+                  <option value={0}>Off</option>
+                  <option value={5000}>5 sec</option>
+                  <option value={10000}>10 sec</option>
+                  <option value={30000}>30 sec</option>
+                </select>
+              </div>
               <div className={styles.syncRow}>
                 <label>Gainers:</label>
                 <select

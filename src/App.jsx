@@ -400,8 +400,23 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
   const [chartSyncConfig, setChartSyncConfig] = useState({
     enabled: false,
     gainersCount: 0,
-    losersCount: 0
+    losersCount: 0,
+    sector: 'All',
+    minPercentChange: 0,
+    minVolume: 0,
+    refreshInterval: 0
   });
+  const latestRankedDataRef = useRef([]); // Store latest rankings for auto-refresh
+  const previousSyncedSymbolsRef = useRef([]); // Track last synced symbols to avoid redundant updates
+
+  // Check if symbol list actually changed (for smart auto-refresh)
+  const hasSymbolListChanged = (newList, oldList) => {
+    if (newList.length !== oldList.length) return true;
+    return newList.some((item, i) =>
+      item.symbol !== oldList[i]?.symbol ||
+      item.exchange !== oldList[i]?.exchange
+    );
+  };
 
   // Persist position tracker settings
   useEffect(() => {
@@ -426,16 +441,39 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
   const syncChartsWithRankings = useCallback((rankedData, config) => {
     if (!config.enabled) return;
 
-    const { gainersCount, losersCount } = config;
+    // Store latest rankings for auto-refresh
+    latestRankedDataRef.current = rankedData;
+
+    const { gainersCount, losersCount, sector, minPercentChange, minVolume } = config;
+
+    // Filter by sector first (if not 'All')
+    let filteredData = rankedData;
+    if (sector && sector !== 'All') {
+      filteredData = rankedData.filter(item => item.sector === sector);
+    }
+
+    // Apply min % change filter
+    if (minPercentChange > 0) {
+      filteredData = filteredData.filter(item =>
+        Math.abs(item.percentChange) >= minPercentChange
+      );
+    }
+
+    // Apply min volume filter
+    if (minVolume > 0) {
+      filteredData = filteredData.filter(item =>
+        (item.volume || 0) >= minVolume
+      );
+    }
 
     // Get top gainers (sorted by percentChange desc, positive only)
-    const gainers = rankedData
+    const gainers = filteredData
       .filter(item => item.percentChange > 0)
       .sort((a, b) => b.percentChange - a.percentChange)
       .slice(0, gainersCount);
 
     // Get top losers (sorted by percentChange asc, negative only)
-    const losers = rankedData
+    const losers = filteredData
       .filter(item => item.percentChange < 0)
       .sort((a, b) => a.percentChange - b.percentChange)
       .slice(0, losersCount);
@@ -443,29 +481,76 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
     // Combine: gainers first, then losers
     const symbolsToShow = [...gainers, ...losers];
 
-    // Update charts array
-    setCharts(prev => prev.map((chart, index) => {
-      const rankData = symbolsToShow[index];
-      if (!rankData) return chart;
+    // Check if the symbol list actually changed (smart auto-refresh)
+    if (!hasSymbolListChanged(symbolsToShow, previousSyncedSymbolsRef.current)) {
+      return; // Skip - no changes to sync
+    }
 
-      // Only update if symbol changed
-      if (chart.symbol === rankData.symbol && chart.exchange === rankData.exchange) {
-        return chart;
-      }
-
-      return {
-        ...chart,
-        symbol: rankData.symbol,
-        exchange: rankData.exchange,
-        strategyConfig: null // Clear any strategy when switching
-      };
+    // Store new list for future comparison
+    previousSyncedSymbolsRef.current = symbolsToShow.map(s => ({
+      symbol: s.symbol,
+      exchange: s.exchange
     }));
+
+    // Staggered chart update - 150ms delay between each
+    const updateChartAtIndex = (index) => {
+      if (index >= symbolsToShow.length) return;
+
+      const rankData = symbolsToShow[index];
+
+      setCharts(prev => {
+        const chart = prev[index];
+        if (!chart) return prev;
+
+        // Only update if symbol changed
+        if (chart.symbol === rankData.symbol && chart.exchange === rankData.exchange) {
+          return prev;
+        }
+
+        return prev.map((c, i) => {
+          if (i !== index) return c;
+          return {
+            ...c,
+            symbol: rankData.symbol,
+            exchange: rankData.exchange,
+            strategyConfig: null
+          };
+        });
+      });
+
+      // Schedule next chart update
+      if (index < symbolsToShow.length - 1) {
+        setTimeout(() => updateChartAtIndex(index + 1), 150);
+      }
+    };
+
+    // Start staggered updates
+    if (symbolsToShow.length > 0) {
+      updateChartAtIndex(0);
+    }
   }, []);
 
   // Handler to update chart sync configuration
   const handleChartSyncConfigChange = useCallback((newConfig) => {
     setChartSyncConfig(newConfig);
+    // Reset previous symbols when sync is disabled (allows fresh start on re-enable)
+    if (!newConfig.enabled) {
+      previousSyncedSymbolsRef.current = [];
+    }
   }, []);
+
+  // Auto-refresh effect for chart sync
+  useEffect(() => {
+    if (!chartSyncConfig.enabled || !chartSyncConfig.refreshInterval) return;
+
+    const interval = setInterval(() => {
+      if (latestRankedDataRef.current.length > 0) {
+        syncChartsWithRankings(latestRankedDataRef.current, chartSyncConfig);
+      }
+    }, chartSyncConfig.refreshInterval);
+
+    return () => clearInterval(interval);
+  }, [chartSyncConfig, syncChartsWithRankings]);
 
   // Theme State
   const [theme, setTheme] = useState(() => {
@@ -2667,6 +2752,7 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
             onOpenOptionChain={handleOpenOptionChainForSymbol}
             oiLines={oiLines}
             showOILines={showOILines}
+            isSyncEnabled={chartSyncConfig.enabled}
           />
         }
       />

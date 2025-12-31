@@ -186,6 +186,27 @@
   border-color: var(--tv-color-brand);
 }
 
+.syncInput {
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--tv-color-text-primary);
+  background-color: var(--tv-color-pane-background);
+  border: 1px solid var(--tv-color-border);
+  border-radius: 4px;
+  width: 70px;
+  text-align: right;
+}
+
+.syncInput:focus {
+  outline: none;
+  border-color: var(--tv-color-brand);
+}
+
+.syncInput::-webkit-inner-spin-button,
+.syncInput::-webkit-outer-spin-button {
+  opacity: 0.5;
+}
+
 .syncInfo {
   font-size: 11px;
   color: var(--tv-color-text-secondary);
