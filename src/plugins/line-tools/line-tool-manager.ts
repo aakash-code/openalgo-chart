@@ -2614,6 +2614,7 @@ export class LineToolManager extends PluginBase {
                     points: state.points,
                     options: { ...tool._options },
                     locked: tool._locked || false,
+                    visible: !(tool as any)._isManuallyHidden,
                 });
             } catch (error) {
                 console.warn('Failed to export tool:', error);
@@ -2720,5 +2721,66 @@ export class LineToolManager extends PluginBase {
      */
     public setOnDrawingsChanged(callback: (() => void) | null): void {
         this._onDrawingsChanged = callback;
+    }
+
+    /**
+     * Get tool by index as it appears in exportDrawings()
+     */
+    private _getToolByExportIndex(index: number): any | null {
+        let currentIndex = 0;
+        for (const tool of this._tools) {
+            const toolType = (tool as any).toolType as ToolType;
+            if (!toolType || toolType === 'None' || toolType === 'UserPriceAlerts') {
+                continue;
+            }
+            if (currentIndex === index) {
+                return tool;
+            }
+            currentIndex++;
+        }
+        return null;
+    }
+
+    public toggleToolLockByIndex(index: number): void {
+        const tool = this._getToolByExportIndex(index);
+        if (tool) {
+            this.toggleToolLock(tool);
+            if (this._onDrawingsChanged) this._onDrawingsChanged();
+        }
+    }
+
+    public toggleToolVisibilityByIndex(index: number): void {
+        const tool = this._getToolByExportIndex(index);
+        if (tool) {
+            if (tool._isManuallyHidden) {
+                this.series.attachPrimitive(tool);
+                tool._isManuallyHidden = false;
+            } else {
+                this.series.detachPrimitive(tool);
+                tool._isManuallyHidden = true;
+            }
+            this.requestUpdate();
+            if (this._onDrawingsChanged) {
+                this._onDrawingsChanged();
+            }
+        }
+    }
+
+    public removeToolByIndex(index: number): void {
+        const tool = this._getToolByExportIndex(index);
+        if (tool) {
+            this.series.detachPrimitive(tool);
+            const toolIndex = this._tools.indexOf(tool);
+            if (toolIndex !== -1) {
+                this._tools.splice(toolIndex, 1);
+            }
+            if (this._selectedTool === tool) {
+                this._deselectCurrentTool();
+            }
+            this.requestUpdate();
+            if (this._onDrawingsChanged) {
+                this._onDrawingsChanged();
+            }
+        }
     }
 }

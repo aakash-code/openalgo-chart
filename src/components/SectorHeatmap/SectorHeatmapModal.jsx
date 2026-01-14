@@ -12,11 +12,12 @@ const HEATMAP_MODES = [
 const SectorHeatmapModal = ({ isOpen, onClose, watchlistData, onSectorSelect, onSymbolSelect }) => {
   const [activeMode, setActiveMode] = useState('treemap');
   const [hoveredStock, setHoveredStock] = useState(null);
+  const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const resizeObserverRef = useRef(null);
   const treemapRef = useRef(null);
 
-  // Memoized callback ref for treemap container - prevents infinite loops
+  // Memoized callback ref for treemap container
   const setTreemapRef = useCallback((node) => {
     // Cleanup previous observer
     if (resizeObserverRef.current) {
@@ -27,26 +28,29 @@ const SectorHeatmapModal = ({ isOpen, onClose, watchlistData, onSectorSelect, on
     treemapRef.current = node;
 
     if (node) {
-      // Measure immediately, but only update if changed
-      const rect = node.getBoundingClientRect();
-      setContainerSize(prev => {
-        if (prev.width === rect.width && prev.height === rect.height) return prev;
-        return { width: rect.width, height: rect.height };
-      });
+      // Helper to update size
+      const updateSize = () => {
+        if (!node) return;
+        const width = node.clientWidth;
+        const height = node.clientHeight;
 
-      // Setup resize observer for future changes
-      resizeObserverRef.current = new ResizeObserver(entries => {
-        for (let entry of entries) {
-          setContainerSize(prev => {
-            if (prev.width === entry.contentRect.width && prev.height === entry.contentRect.height) return prev;
-            return {
-              width: entry.contentRect.width,
-              height: entry.contentRect.height
-            };
-          });
-        }
-      });
+        setContainerSize(prev => {
+          if (prev.width === width && prev.height === height) return prev;
+          return { width, height };
+        });
+      };
+
+      // Measure immediately
+      updateSize();
+
+      // Setup resize observer
+      resizeObserverRef.current = new ResizeObserver(updateSize);
       resizeObserverRef.current.observe(node);
+
+      // Force check after modal animation (250ms)
+      setTimeout(updateSize, 300);
+      // Double check just in case
+      setTimeout(updateSize, 1000);
     }
   }, []);
 
@@ -58,6 +62,15 @@ const SectorHeatmapModal = ({ isOpen, onClose, watchlistData, onSectorSelect, on
       }
     };
   }, []);
+
+  const handleStockMouseEnter = (stock, e) => {
+    setHoveredStock(stock);
+    setTooltipPos({ x: e.clientX, y: e.clientY });
+  };
+
+  const handleStockMouseMove = (e) => {
+    setTooltipPos({ x: e.clientX, y: e.clientY });
+  };
 
   // Calculate intraday change from open
   const calculateIntradayChange = (item) => {
@@ -283,12 +296,11 @@ const SectorHeatmapModal = ({ isOpen, onClose, watchlistData, onSectorSelect, on
   const treemapLayout = useMemo(() => {
     if (containerSize.width === 0 || containerSize.height === 0) return [];
 
-    // Use stock COUNT for sector sizing (proportional representation)
-    const totalStocks = stockData.length;
+    // Use stock COUNT for sector sizing, but Boost small sectors for visibility
     const sectorItems = sectorData.map(s => ({
       ...s,
-      value: s.stockCount, // Size by stock count, not market cap
-    }));
+      value: Math.max(s.stockCount, 3), // Minimum weight of 3 prevents tiny unreadable strips
+    })).sort((a, b) => b.value - a.value); // CRITICAL: Sort by value for Squarified algorithm
 
     const sectorLayout = calculateTreemapLayout(
       sectorItems,
@@ -305,7 +317,7 @@ const SectorHeatmapModal = ({ isOpen, onClose, watchlistData, onSectorSelect, on
         value: 1, // Equal size for all stocks
       }));
 
-      const padding = 2;
+      const padding = 0; // Seamless (TradingView style)
       const headerHeight = 22;
       const stockLayout = calculateTreemapLayout(
         stockItems,
@@ -344,13 +356,28 @@ const SectorHeatmapModal = ({ isOpen, onClose, watchlistData, onSectorSelect, on
                 className={styles.treemapSectorHeader}
                 style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}
               >
-                <span className={styles.treemapSectorName}>{sector.sector}</span>
-                <span
-                  className={styles.treemapSectorChange}
-                  style={{ color: getChangeColor(sector.avgChange, false) }}
-                >
-                  {sector.avgChange >= 0 ? '+' : ''}{sector.avgChange.toFixed(2)}%
-                </span>
+                {/* Responsive Header: Hide details if sector is too narrow */}
+
+                {sector.width > 40 && (
+                  <span
+                    className={styles.treemapSectorName}
+                    style={{ fontSize: Math.max(Math.min(sector.width / 8, 11), 9) }}
+                  >
+                    {sector.sector}
+                  </span>
+                )}
+
+                {sector.width > 90 && (
+                  <span
+                    className={styles.treemapSectorChange}
+                    style={{
+                      color: getChangeColor(sector.avgChange, false),
+                      fontSize: '11px'
+                    }}
+                  >
+                    {sector.avgChange >= 0 ? '+' : ''}{sector.avgChange.toFixed(2)}%
+                  </span>
+                )}
               </div>
 
               {sector.stockLayout.map(stock => (
@@ -365,22 +392,28 @@ const SectorHeatmapModal = ({ isOpen, onClose, watchlistData, onSectorSelect, on
                     backgroundColor: getChangeColor(stock.change, true),
                   }}
                   onClick={(e) => handleStockClick(stock, e)}
-                  onMouseEnter={() => setHoveredStock(stock)}
+                  onMouseEnter={(e) => handleStockMouseEnter(stock, e)}
+                  onMouseMove={handleStockMouseMove}
                   onMouseLeave={() => setHoveredStock(null)}
                 >
                   <div className={styles.treemapStockContent}>
-                    {/* Always show symbol if tile is visible */}
-                    <span
-                      className={styles.treemapSymbol}
-                      style={{
-                        fontSize: Math.max(Math.min(stock.width / 5.5, 16), 10),
-                        color: getTextColor()
-                      }}
-                    >
-                      {stock.symbol}
-                    </span>
-                    {/* Show % change if height allows */}
-                    {stock.height > 35 && (
+                    {/* Responsive Text Logic: Matches TradingView behavior */}
+
+                    {/* 1. Symbol: Only show if tile is big enough for at least short text */}
+                    {stock.width > 28 && stock.height > 18 && (
+                      <span
+                        className={styles.treemapSymbol}
+                        style={{
+                          fontSize: Math.max(Math.min(stock.width / 5.5, 16), 10),
+                          color: getTextColor()
+                        }}
+                      >
+                        {stock.symbol}
+                      </span>
+                    )}
+
+                    {/* 2. Change %: Only show if tile has vertical space */}
+                    {stock.width > 35 && stock.height > 35 && (
                       <span
                         className={styles.treemapChange}
                         style={{
@@ -391,8 +424,9 @@ const SectorHeatmapModal = ({ isOpen, onClose, watchlistData, onSectorSelect, on
                         {stock.change >= 0 ? '+' : ''}{stock.change.toFixed(2)}%
                       </span>
                     )}
-                    {/* Show price only if enough space */}
-                    {stock.height > 55 && stock.width > 55 && (
+
+                    {/* 3. Price: Only show for large "hero" tiles */}
+                    {stock.height > 55 && stock.width > 60 && (
                       <span
                         className={styles.treemapLtp}
                         style={{ color: 'rgba(255,255,255,0.85)' }}
@@ -407,28 +441,6 @@ const SectorHeatmapModal = ({ isOpen, onClose, watchlistData, onSectorSelect, on
           ))}
         </div>
 
-        {/* Hover tooltip */}
-        {hoveredStock && (
-          <div className={styles.tooltip}>
-            <div className={styles.tooltipHeader}>
-              <span className={styles.tooltipSymbol}>{hoveredStock.symbol}</span>
-              <span
-                className={styles.tooltipChange}
-                style={{ color: getChangeColor(hoveredStock.change, false) }}
-              >
-                {hoveredStock.change >= 0 ? '+' : ''}{hoveredStock.change.toFixed(2)}%
-              </span>
-            </div>
-            <div className={styles.tooltipRow}>
-              <span>LTP</span>
-              <span>₹{formatPrice(hoveredStock.ltp)}</span>
-            </div>
-            <div className={styles.tooltipRow}>
-              <span>Sector</span>
-              <span>{hoveredStock.sector}</span>
-            </div>
-          </div>
-        )}
       </div>
     );
   };
@@ -601,6 +613,40 @@ const SectorHeatmapModal = ({ isOpen, onClose, watchlistData, onSectorSelect, on
           </div>
           <span className={styles.hint}>Click on stocks to view chart</span>
         </div>
+
+        {/* Hover tooltip */}
+        {hoveredStock && (
+          <div
+            className={styles.tooltip}
+            style={{
+              top: (tooltipPos.y + 20) + 'px',
+              left: tooltipPos.x + 'px',
+              right: 'auto',
+              bottom: 'auto',
+              transform: 'translateX(-50%)',
+              position: 'fixed',
+              zIndex: 10001,
+              pointerEvents: 'none',
+              transition: 'none',
+              animation: 'none'
+            }}
+          >
+            <div className={styles.tooltipHeader}>
+              <span className={styles.tooltipSymbol}>{hoveredStock.symbol}</span>
+              <span className={styles.tooltipChange} style={{ color: getChangeColor(hoveredStock.change, false) }}>
+                {hoveredStock.change >= 0 ? '+' : ''}{hoveredStock.change.toFixed(2)}%
+              </span>
+            </div>
+            <div className={styles.tooltipRow}>
+              <span>LTP</span>
+              <span>{parseFloat(hoveredStock.ltp).toFixed(2)}</span>
+            </div>
+            <div className={styles.tooltipRow}>
+              <span>Sector</span>
+              <span>{hoveredStock.sector}</span>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

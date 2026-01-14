@@ -6,13 +6,6 @@ import { useState, useEffect, useRef, useCallback } from 'react';
  * - Try-catch for edge cases (private browsing, quota exceeded)
  * - Debounced writes to prevent rapid localStorage updates
  * - Type-safe serialization/deserialization
- * 
- * @param {string} key - localStorage key
- * @param {*} defaultValue - Default value if key doesn't exist
- * @param {object} options - Configuration options
- * @param {number} options.debounceMs - Debounce delay in ms (default: 300)
- * @param {boolean} options.serialize - Whether to JSON serialize (default: true for objects)
- * @returns {[*, function]} - [value, setValue] tuple
  */
 export function useLocalStorage(key, defaultValue, options = {}) {
     const { debounceMs = 300, serialize = typeof defaultValue === 'object' } = options;
@@ -87,7 +80,9 @@ export function useLocalStorage(key, defaultValue, options = {}) {
     const setStoredValue = useCallback((newValue) => {
         setValue((prev) => {
             // Support functional updates like useState
-            const valueToStore = typeof newValue === 'function' ? newValue(prev) : newValue;
+            const valueToStore = typeof newValue === 'function'
+                ? newValue(prev)
+                : newValue;
             return valueToStore;
         });
     }, []);

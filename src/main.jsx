@@ -5,6 +5,11 @@ import App from './App.jsx'
 import ErrorBoundary from './components/ErrorBoundary/ErrorBoundary.jsx'
 import { ThemeProvider } from './context/ThemeContext.jsx'
 import { UserProvider } from './context/UserContext.jsx'
+import { UIProvider } from './context/UIContext.jsx'
+import { ToolProvider } from './context/ToolContext.jsx'
+import { AlertProvider } from './context/AlertContext.jsx'
+import { ChartProvider } from './context/ChartContext.jsx'
+import { WatchlistProvider } from './context/WatchlistContext.jsx'
 
 // Apply theme immediately to prevent flash of default theme
 // This runs synchronously BEFORE React renders anything
@@ -27,7 +32,17 @@ createRoot(document.getElementById('root')).render(
     <ErrorBoundary>
       <UserProvider>
         <ThemeProvider>
-          <App />
+          <UIProvider>
+            <ToolProvider>
+              <AlertProvider>
+                <ChartProvider>
+                    <WatchlistProvider>
+                      <App />
+                    </WatchlistProvider>
+                  </ChartProvider>
+              </AlertProvider>
+            </ToolProvider>
+          </UIProvider>
         </ThemeProvider>
       </UserProvider>
     </ErrorBoundary>

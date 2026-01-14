@@ -130,7 +130,6 @@
 .closeButton:hover {
   background: var(--tv-color-border);
   color: var(--tv-color-text-primary);
-  transform: rotate(90deg);
 }
 
 /* Mode Tabs */
@@ -198,9 +197,9 @@
 
 .treemapSector {
   position: absolute;
-  border-radius: 4px;
+  border-radius: 0;
   overflow: hidden;
-  border: 1px solid var(--tv-color-border);
+  border: none;
   transition: box-shadow 0.15s ease;
   background: var(--tv-color-toolbar-background);
 }
@@ -255,11 +254,12 @@
   justify-content: center;
   cursor: pointer;
   transition: all 0.1s ease;
-  border: 1px solid rgba(0, 0, 0, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-sizing: border-box;
 }
 
 [data-theme="light"] .treemapStock {
-  border-color: rgba(0, 0, 0, 0.1);
+  border-color: rgba(255, 255, 255, 0.4);
 }
 
 .treemapStock:hover {

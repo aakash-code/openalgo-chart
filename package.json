@@ -10,6 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "rollup": "^4.55.1",
     "classnames": "^2.5.1",
     "html2canvas": "^1.4.1",
     "lightweight-charts": "^5.0.9",
@@ -22,8 +23,6 @@
     "@eslint/js": "^9.39.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.1",
-    "@types/react": "^19.2.5",
-    "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",
     "eslint": "^9.39.1",
     "eslint-plugin-react-hooks": "^7.0.1",

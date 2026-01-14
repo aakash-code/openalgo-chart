@@ -132,10 +132,17 @@ export const indicatorConfigs = {
         name: 'Volume',
         fullName: 'Volume',
         pane: 'main',
-        inputs: [],
+        inputs: [
+            { key: 'maPeriod', label: 'MA Period', type: 'number', default: 20, min: 1, max: 200 },
+            { key: 'highVolumeThreshold', label: 'High Vol Threshold', type: 'number', default: 1.5, min: 1.0, max: 5.0, step: 0.1 },
+            { key: 'showMA', label: 'Show MA Line', type: 'boolean', default: true },
+        ],
         style: [
             { key: 'colorUp', label: 'Up Color', type: 'color', default: '#26A69A' },
             { key: 'colorDown', label: 'Down Color', type: 'color', default: '#EF5350' },
+            { key: 'highVolumeUpColor', label: 'High Vol Up', type: 'color', default: '#00E676' },
+            { key: 'highVolumeDownColor', label: 'High Vol Down', type: 'color', default: '#FF1744' },
+            { key: 'maColor', label: 'MA Line Color', type: 'color', default: '#FFD700' },
         ],
     },
 
@@ -189,6 +196,79 @@ export const indicatorConfigs = {
             { key: 'poorLowColor', label: 'Poor Low', type: 'color', default: '#26a69a' },
             { key: 'singlePrintColor', label: 'Single Prints', type: 'color', default: '#FFEB3B' },
             { key: 'midpointColor', label: 'Midpoint', type: 'color', default: '#9C27B0' },
+        ],
+    },
+
+    firstCandle: {
+        name: 'First Red Candle',
+        fullName: 'First Red Candle Strategy',
+        pane: 'main',
+        category: 'strategy',
+        description: 'Identifies the first RED candle after market open (9:15 AM IST) on 5-minute charts',
+        inputs: [],
+        style: [
+            { key: 'highlightColor', label: 'Marker Color', type: 'color', default: '#FFD700' },
+            { key: 'highLineColor', label: 'High Line', type: 'color', default: '#ef5350' },
+            { key: 'lowLineColor', label: 'Low Line', type: 'color', default: '#26a69a' },
+        ],
+    },
+
+    rangeBreakout: {
+        name: 'Range Breakout',
+        fullName: 'Opening Range Breakout (9:30-10:00)',
+        pane: 'main',
+        category: 'strategy',
+        description: 'Draws 9:30-10:00 AM range high/low lines with breakout/breakdown signals for Nifty/Sensex options',
+        inputs: [
+            { key: 'rangeStartHour', label: 'Range Start Hour', type: 'number', min: 9, max: 15, default: 9 },
+            { key: 'rangeStartMinute', label: 'Range Start Min', type: 'number', min: 0, max: 59, default: 30 },
+            { key: 'rangeEndHour', label: 'Range End Hour', type: 'number', min: 9, max: 15, default: 10 },
+            { key: 'rangeEndMinute', label: 'Range End Min', type: 'number', min: 0, max: 59, default: 0 },
+            { key: 'showSignals', label: 'Show Signals', type: 'boolean', default: true },
+        ],
+        style: [
+            { key: 'highColor', label: 'High Line (Breakout)', type: 'color', default: '#089981' },
+            { key: 'lowColor', label: 'Low Line (Breakdown)', type: 'color', default: '#F23645' },
+            { key: 'lineWidth', label: 'Line Width', type: 'number', min: 1, max: 4, default: 2 },
+        ],
+    },
+
+    annStrategy: {
+        name: 'ANN Strategy',
+        fullName: 'Artificial Neural Network Strategy',
+        pane: 'ann',
+        category: 'strategy',
+        description: 'Pre-trained neural network predicting market direction based on daily price changes',
+        inputs: [
+            { key: 'threshold', label: 'Threshold', type: 'number', min: 0.0001, max: 0.01, step: 0.0001, default: 0.0014 },
+            { key: 'showBackground', label: 'Show Background', type: 'boolean', default: true },
+            { key: 'showSignals', label: 'Show Signals', type: 'boolean', default: true },
+        ],
+        style: [
+            { key: 'longColor', label: 'Long Signal', type: 'color', default: '#26A69A' },
+            { key: 'shortColor', label: 'Short Signal', type: 'color', default: '#EF5350' },
+            { key: 'predictionColor', label: 'Prediction Line', type: 'color', default: '#00BCD4' },
+            { key: 'areaColor', label: 'Area Fill', type: 'color', default: '#C0C0C040' },
+        ],
+    },
+
+    hilengaMilenga: {
+        name: 'Hilenga-Milenga',
+        fullName: 'Hilenga-Milenga by NK Sir',
+        pane: 'hilengaMilenga',
+        description: 'Momentum oscillator combining RSI with EMA and WMA smoothing lines',
+        inputs: [
+            { key: 'rsiLength', label: 'RSI Length', type: 'number', min: 1, max: 100, default: 9 },
+            { key: 'emaLength', label: 'EMA Length', type: 'number', min: 1, max: 50, default: 3 },
+            { key: 'wmaLength', label: 'WMA Length', type: 'number', min: 1, max: 100, default: 21 },
+        ],
+        style: [
+            { key: 'rsiColor', label: 'RSI Line', type: 'color', default: '#131722' },
+            { key: 'emaColor', label: 'Price (EMA)', type: 'color', default: '#26A69A' },
+            { key: 'wmaColor', label: 'Strength (WMA)', type: 'color', default: '#EF5350' },
+            { key: 'bullFillColor', label: 'Bullish Fill (>50)', type: 'color', default: '#ff6b6bB3' },
+            { key: 'bearFillColor', label: 'Bearish Fill (<50)', type: 'color', default: '#4ecdc4B3' },
+            { key: 'midlineColor', label: 'Midline (50)', type: 'color', default: '#787B86' },
         ],
     },
 
