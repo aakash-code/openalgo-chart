@@ -240,12 +240,11 @@ export const updateHilengaMilengaSeries = (series, ind, data, isVisible) => {
     if (series.wma) series.wma.applyOptions({ visible: isVisible, color: ind.wmaColor || '#EF5350' });
     if (series.baseline) series.baseline.applyOptions({ visible: isVisible });
 
-    const result = calculateHilengaMilenga(
-        data,
-        ind.rsiLength || 14,
-        ind.emaLength || 5,
-        ind.wmaLength || 45
-    );
+    const result = calculateHilengaMilenga(data, {
+        rsiLength: ind.rsiLength || 14,
+        emaLength: ind.emaLength || 5,
+        wmaLength: ind.wmaLength || 45
+    });
 
     if (result) {
         if (result.rsi && series.rsi) series.rsi.setData(result.rsi);

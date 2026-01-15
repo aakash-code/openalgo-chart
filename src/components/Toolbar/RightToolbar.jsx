@@ -1,13 +1,11 @@
 import React from 'react';
-import { List, Clock, TrendingUp, Layers, ArrowLeftRight, Brain, Filter } from 'lucide-react';
+import { List, Clock, TrendingUp, Layers, ArrowLeftRight, Brain } from 'lucide-react';
 import styles from './RightToolbar.module.css';
 import classNames from 'classnames';
 
 const RightToolbar = ({ activePanel, onPanelChange, badges = {} }) => {
     const tools = [
         { id: 'watchlist', icon: List, label: 'Watchlist' },
-        { id: 'objectTree', icon: Layers, label: 'Object Tree' },
-        { id: 'screener', icon: Filter, label: 'Market Screener' },
         { id: 'position_tracker', icon: TrendingUp, label: 'Position Flow' },
         { id: 'ann_scanner', icon: Brain, label: 'ANN Scanner' },
         { id: 'alerts', icon: Clock, label: 'Alerts' },

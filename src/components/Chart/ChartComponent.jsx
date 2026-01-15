@@ -84,7 +84,6 @@ const ChartComponent = forwardRef(({
     theme = 'dark',
     comparisonSymbols = [],
     onAlertsSync,
-    onDrawingsSync,
     onAlertTriggered,
     onReplayModeChange,
     isDrawingsLocked = false,
@@ -118,7 +117,7 @@ const ChartComponent = forwardRef(({
     useChartResize(chartContainerRef, chartInstance);
 
     const [lineToolManager, setLineToolManager] = useState(null);
-    useChartDrawings(lineToolManager, symbol, exchange, interval, onDrawingsSync);
+    useChartDrawings(lineToolManager, symbol, exchange, interval);
     useChartAlerts(lineToolManager, symbol, exchange);
 
     // Close context menu on click outside
@@ -498,31 +497,6 @@ const ChartComponent = forwardRef(({
             const userAlerts = manager && manager._userPriceAlerts;
             if (userAlerts && typeof userAlerts.openEditDialog === 'function') {
                 userAlerts.openEditDialog('new', { price: Number(price), condition: 'crossing' });
-            }
-        },
-        toggleDrawingVisibility: (index) => {
-            if (lineToolManagerRef.current && typeof lineToolManagerRef.current.toggleToolVisibilityByIndex === 'function') {
-                lineToolManagerRef.current.toggleToolVisibilityByIndex(index);
-            }
-        },
-        toggleDrawingLock: (index) => {
-            if (lineToolManagerRef.current && typeof lineToolManagerRef.current.toggleToolLockByIndex === 'function') {
-                lineToolManagerRef.current.toggleToolLockByIndex(index);
-            }
-        },
-        removeDrawingByIndex: (index) => {
-            if (lineToolManagerRef.current && typeof lineToolManagerRef.current.removeToolByIndex === 'function') {
-                lineToolManagerRef.current.removeToolByIndex(index);
-            }
-        },
-        enableSessionHighlighting: () => {
-            if (lineToolManagerRef.current && typeof lineToolManagerRef.current.enableSessionHighlighting === 'function') {
-                lineToolManagerRef.current.enableSessionHighlighting();
-            }
-        },
-        disableSessionHighlighting: () => {
-            if (lineToolManagerRef.current && typeof lineToolManagerRef.current.disableSessionHighlighting === 'function') {
-                lineToolManagerRef.current.disableSessionHighlighting();
             }
         }
     }));

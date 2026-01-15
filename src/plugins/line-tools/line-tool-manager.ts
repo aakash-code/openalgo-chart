@@ -2614,7 +2614,6 @@ export class LineToolManager extends PluginBase {
                     points: state.points,
                     options: { ...tool._options },
                     locked: tool._locked || false,
-                    visible: !tool._userHidden, // Explicitly map user hidden state to visible prop
                 });
             } catch (error) {
                 console.warn('Failed to export tool:', error);
@@ -2721,112 +2720,5 @@ export class LineToolManager extends PluginBase {
      */
     public setOnDrawingsChanged(callback: (() => void) | null): void {
         this._onDrawingsChanged = callback;
-    }
-    /**
-     * Get a tool by its visual index (matching the exported list)
-     * This mirrors the filtering logic in exportDrawings
-     */
-    public getToolByIndex(visualIndex: number): any | null {
-        let currentIndex = 0;
-
-        for (const tool of this._tools) {
-            const toolType = (tool as any).toolType as ToolType;
-            // distinct filtering logic must match exportDrawings exactly
-            if (!toolType || toolType === 'None' || toolType === 'UserPriceAlerts') {
-                continue;
-            }
-
-            const state = extractToolState(tool);
-            if (!state) continue;
-
-            if (currentIndex === visualIndex) {
-                return tool;
-            }
-            currentIndex++;
-        }
-        return null;
-    }
-
-    /**
-     * Remove a tool by its visual index
-     */
-    public removeToolByIndex(visualIndex: number): void {
-        const tool = this.getToolByIndex(visualIndex);
-        if (tool) {
-            this.series.detachPrimitive(tool);
-            const index = this._tools.indexOf(tool);
-            if (index !== -1) {
-                this._tools.splice(index, 1);
-            }
-            // Record in history? Usually yes for user actions
-            this._historyManager.recordDelete(tool, (tool as any).toolType);
-
-            // Trigger update
-            if (this._onDrawingsChanged) {
-                this._onDrawingsChanged();
-            }
-            this.requestUpdate();
-        }
-    }
-
-    /**
-     * Toggle visibility of a tool by its visual index
-     */
-    public toggleToolVisibilityByIndex(visualIndex: number): void {
-        const tool = this.getToolByIndex(visualIndex);
-        if (tool) {
-            // Use _userHidden flag to track individual visibility matching the detach/attach method
-            // Standard tools in this codebase don't reliably respect options.visible for hiding
-
-            if (tool._userHidden) {
-                // Currently hidden by user -> Show (Attach)
-                try {
-                    this.series.attachPrimitive(tool);
-                    tool._userHidden = false;
-
-                    // Also update option for consistency if supported later
-                    if (tool._options) tool._options.visible = true;
-
-                } catch (e) {
-                    // Might be already attached or other error
-                    console.warn('Error attaching tool:', e);
-                }
-            } else {
-                // Currently visible -> Hide (Detach)
-                try {
-                    this.series.detachPrimitive(tool);
-                    tool._userHidden = true;
-
-                    // Also update option for consistency if supported later
-                    if (tool._options) tool._options.visible = false;
-
-                } catch (e) {
-                    // Might be already detached (e.g. by Hide All)
-                    // But we still mark it as user hidden
-                    tool._userHidden = true;
-                }
-            }
-
-            // Trigger update
-            this.requestUpdate();
-            if (this._onDrawingsChanged) {
-                this._onDrawingsChanged();
-            }
-        }
-    }
-
-    /**
-     * Toggle lock state of a tool by its visual index
-     */
-    public toggleToolLockByIndex(visualIndex: number): void {
-        const tool = this.getToolByIndex(visualIndex);
-        if (tool) {
-            tool._locked = !tool._locked;
-            // Trigger update
-            if (this._onDrawingsChanged) {
-                this._onDrawingsChanged();
-            }
-            this.requestUpdate();
-        }
     }
 }
