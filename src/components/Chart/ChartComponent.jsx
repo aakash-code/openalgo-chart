@@ -3974,14 +3974,30 @@ const ChartComponent = forwardRef(({
                 y={priceScaleMenu.y}
                 price={priceScaleMenu.price}
                 symbol={symbol}
+                ltp={dataRef.current?.length > 0 ? dataRef.current[dataRef.current.length - 1]?.close : null}
                 onAddAlert={() => {
                     const manager = lineToolManagerRef.current;
                     const userAlerts = manager && manager._userPriceAlerts;
                     if (userAlerts && priceScaleMenu.price != null) {
-                        userAlerts.openEditDialog('new', {
-                            price: priceScaleMenu.price,
-                            condition: 'crossing'
-                        });
+                        userAlerts.addAlertWithCondition(priceScaleMenu.price, 'crossing');
+                    }
+                }}
+                onPlaceSellOrder={(price, orderType) => {
+                    // Open trading panel with SELL pre-filled
+                    if (onOpenTradingPanel && priceScaleMenu.price != null) {
+                        onOpenTradingPanel('SELL', priceScaleMenu.price, orderType || 'LIMIT');
+                    }
+                }}
+                onPlaceBuyOrder={(price, orderType) => {
+                    // Open trading panel with BUY pre-filled
+                    if (onOpenTradingPanel && priceScaleMenu.price != null) {
+                        onOpenTradingPanel('BUY', priceScaleMenu.price, orderType || 'LIMIT');
+                    }
+                }}
+                onAddOrder={(price) => {
+                    // Open trading panel with default settings at price
+                    if (onOpenTradingPanel && priceScaleMenu.price != null) {
+                        onOpenTradingPanel('BUY', priceScaleMenu.price, 'LIMIT');
                     }
                 }}
                 onDrawHorizontalLine={() => {
