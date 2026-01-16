@@ -26,10 +26,13 @@ import { calculateHilengaMilenga } from '../../../utils/indicators/hilengaMileng
  */
 export const updateOverlaySeries = (series, ind, data, isVisible) => {
     const { type } = ind;
+    // Generate title only if showTitle is enabled
+    const title = ind.showTitle ? `${type.toUpperCase()} ${ind.period || 20}` : '';
+
     series.applyOptions({
         visible: isVisible,
         color: ind.color || (type === 'sma' ? '#2196F3' : '#FF9800'),
-        title: `${type.toUpperCase()} ${ind.period || 20}`
+        title
     });
 
     let val = null;
