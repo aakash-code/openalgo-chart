@@ -60,20 +60,21 @@ const DepthOfMarket = lazy(() => import('./components/DepthOfMarket'));
 const ANNScanner = lazy(() => import('./components/ANNScanner'));
 const ChartTemplatesDialog = lazy(() => import('./components/ChartTemplates/ChartTemplatesDialog'));
 const ShortcutsSettings = lazy(() => import('./components/ShortcutsSettings/ShortcutsSettings'));
+const IndicatorSettingsDialog = lazy(() => import('./components/IndicatorSettings/IndicatorSettingsDialog'));
 import {
-    VALID_INTERVAL_UNITS,
-    DEFAULT_FAVORITE_INTERVALS,
-    isValidIntervalValue,
-    sanitizeFavoriteIntervals,
-    sanitizeCustomIntervals,
-    safeParseJSON,
-    ALERT_RETENTION_MS,
-    DEFAULT_WATCHLIST,
-    migrateWatchlistData,
-    DEFAULT_CHART_APPEARANCE,
-    DEFAULT_DRAWING_OPTIONS,
-    DRAWING_TOOLS,
-    formatPrice
+  VALID_INTERVAL_UNITS,
+  DEFAULT_FAVORITE_INTERVALS,
+  isValidIntervalValue,
+  sanitizeFavoriteIntervals,
+  sanitizeCustomIntervals,
+  safeParseJSON,
+  ALERT_RETENTION_MS,
+  DEFAULT_WATCHLIST,
+  migrateWatchlistData,
+  DEFAULT_CHART_APPEARANCE,
+  DEFAULT_DRAWING_OPTIONS,
+  DRAWING_TOOLS,
+  formatPrice
 } from './utils/appUtils';
 
 // Simple Loader Component - uses CSS variables to match user's theme
@@ -724,6 +725,7 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
   const [isSessionBreakVisible, setIsSessionBreakVisible] = useLocalStorage('oa_session_break_visible', false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isIndicatorSettingsOpen, setIsIndicatorSettingsOpen] = useState(false);
+  const [editingIndicator, setEditingIndicator] = useState(null);
   const [websocketUrl, setWebsocketUrl] = useState(() => {
     try {
       return localStorage.getItem('oa_ws_url') || '127.0.0.1:8765';
@@ -1407,8 +1409,24 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
 
   // Indicator handlers are now provided by useIndicatorHandlers hook
 
+  // Handler to OPEN the settings dialog (called from Object Tree)
+  const handleOpenIndicatorSettings = (indicatorId) => {
+    // Find the indicator to edit
+    const indicator = activeChart.indicators.find(ind => ind.id === indicatorId || ind.type === indicatorId);
+    if (indicator) {
+      setEditingIndicator(indicator);
+      setIsIndicatorSettingsOpen(true);
+    }
+  };
+
   // Check if properties panel should be visible
   const isDrawingPanelVisible = activeTool && DRAWING_TOOLS.includes(activeTool);
+
+  // Drawings State matching lat
+  const [liveDrawings, setLiveDrawings] = useState([]);
+  const handleDrawingsSync = useCallback((drawings) => {
+    setLiveDrawings(drawings);
+  }, []);
 
   // Command Palette (Cmd+K / Ctrl+K)
   const commandPaletteHandlers = React.useMemo(() => ({
@@ -1755,6 +1773,47 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
               onExport={handleExportWatchlist}
               onImport={handleImportWatchlist}
             />
+          ) : activeRightPanel === 'objectTree' ? (
+            <ObjectTreePanel
+              indicators={activeChart.indicators || []}
+              drawings={liveDrawings}
+              onIndicatorVisibilityToggle={handleIndicatorVisibilityToggle}
+              onIndicatorRemove={handleIndicatorRemove}
+              onIndicatorSettings={handleOpenIndicatorSettings}
+              onDrawingVisibilityToggle={(idx) => {
+                const activeRef = chartRefs.current[activeChartId];
+                if (activeRef && typeof activeRef.toggleDrawingVisibility === 'function') {
+                  activeRef.toggleDrawingVisibility(idx);
+                }
+              }}
+              onDrawingLockToggle={(idx) => {
+                const activeRef = chartRefs.current[activeChartId];
+                if (activeRef && typeof activeRef.toggleDrawingLock === 'function') {
+                  activeRef.toggleDrawingLock(idx);
+                }
+              }}
+              onDrawingRemove={(idx) => {
+                const activeRef = chartRefs.current[activeChartId];
+                if (activeRef && typeof activeRef.removeDrawingByIndex === 'function') {
+                  activeRef.removeDrawingByIndex(idx);
+                }
+              }}
+              symbol={currentSymbol}
+              interval={currentInterval}
+            />
+          ) : activeRightPanel === 'screener' ? (
+            <MarketScreenerPanel
+              items={watchlistData}
+              currentSymbol={currentSymbol}
+              currentExchange={currentExchange}
+              onSymbolSelect={(symData) => {
+                const symbol = typeof symData === 'string' ? symData : symData.symbol;
+                const exchange = typeof symData === 'string' ? 'NSE' : (symData.exchange || 'NSE');
+                setCharts(prev => prev.map(chart =>
+                  chart.id === activeChartId ? { ...chart, symbol: symbol, exchange: exchange, strategyConfig: null } : chart
+                ));
+              }}
+            />
           ) : activeRightPanel === 'alerts' ? (
             <AlertsPanel
               alerts={alerts}
@@ -1857,39 +1916,6 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
               onClose={() => setActiveRightPanel('watchlist')}
               showToast={showToast}
             />
-          ) : activeRightPanel === 'objectTree' ? (
-            <ObjectTreePanel
-              indicators={activeChart?.indicators || []}
-              drawings={[]}
-              symbol={currentSymbol}
-              interval={currentInterval}
-              onIndicatorVisibilityToggle={handleIndicatorVisibilityToggle}
-              onIndicatorRemove={handleIndicatorRemove}
-              onIndicatorSettings={handleIndicatorSettings}
-              onDrawingVisibilityToggle={(idx) => {
-                // Drawing handlers can be implemented when drawing management is ready
-                console.log('Toggle drawing visibility:', idx);
-              }}
-              onDrawingLockToggle={(idx) => {
-                console.log('Toggle drawing lock:', idx);
-              }}
-              onDrawingRemove={(idx) => {
-                console.log('Remove drawing:', idx);
-              }}
-            />
-          ) : activeRightPanel === 'screener' ? (
-            <MarketScreenerPanel
-              items={watchlistData}
-              currentSymbol={currentSymbol}
-              currentExchange={currentExchange}
-              onSymbolSelect={(symData) => {
-                const symbol = typeof symData === 'string' ? symData.symbol : symData.symbol;
-                const exchange = typeof symData === 'string' ? 'NSE' : (symData.exchange || 'NSE');
-                setCharts(prev => prev.map(chart =>
-                  chart.id === activeChartId ? { ...chart, symbol, exchange, strategyConfig: null } : chart
-                ));
-              }}
-            />
           ) : null
         }
         rightToolbar={
@@ -1908,6 +1934,7 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
             onMaximizeChart={handleMaximizeChart}
             chartRefs={chartRefs}
             onAlertsSync={handleChartAlertsSync}
+            onDrawingsSync={handleDrawingsSync}
             onAlertTriggered={handleChartAlertTriggered}
             onReplayModeChange={handleReplayModeChange}
             // Common props
@@ -2013,6 +2040,25 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
             chartAppearance={chartAppearance}
             onChartAppearanceChange={handleChartAppearanceChange}
             onResetChartAppearance={handleResetChartAppearance}
+          />
+        )}
+      </Suspense>
+      <Suspense fallback={null}>
+        {isIndicatorSettingsOpen && editingIndicator && (
+          <IndicatorSettingsDialog
+            isOpen={isIndicatorSettingsOpen}
+            onClose={() => {
+              setIsIndicatorSettingsOpen(false);
+              setEditingIndicator(null);
+            }}
+            indicatorType={editingIndicator.type}
+            settings={editingIndicator}
+            onSave={(newSettings) => {
+              handleIndicatorSettings(editingIndicator.id, newSettings);
+              setIsIndicatorSettingsOpen(false);
+              setEditingIndicator(null);
+            }}
+            theme={theme}
           />
         )}
       </Suspense>
