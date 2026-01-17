@@ -3175,6 +3175,12 @@ const ChartComponent = forwardRef(({
             }
         });
 
+        // Check if any active series use the left scale, if not, hide it
+        const hasLeftScaleSeries = comparisonSymbols.some(s => s.scaleMode === 'newPriceScale');
+        if (!hasLeftScaleSeries && chartRef.current) {
+            chartRef.current.priceScale('left').applyOptions({ visible: false });
+        }
+
         // Add new series with cancellation support
         const loadComparisonData = async (comp) => {
             const key = `${comp.symbol}_${comp.exchange}_${comp.scaleMode || 'samePercent'}`;
@@ -4166,6 +4172,7 @@ const ChartComponent = forwardRef(({
                 strategyConfig={strategyConfig}
                 ohlcData={ohlcData}
                 isToolbarVisible={isToolbarVisible}
+                isLeftScaleVisible={comparisonSymbols.some(s => s.scaleMode === 'newPriceScale')}
             />
 
             {/* Comparison Symbol Floating Price Labels */}
