@@ -4458,10 +4458,12 @@ const ChartComponent = forwardRef(({
                     }
                 }}
                 onRemoveIndicator={() => {
-                    // Remove the last indicator
+                    // Remove ALL indicators (since menu says "Remove X indicators")
                     if (indicators?.length > 0 && onIndicatorRemove) {
-                        const lastIndicator = indicators[indicators.length - 1];
-                        onIndicatorRemove(lastIndicator.id);
+                        // Remove each indicator
+                        indicators.forEach(indicator => {
+                            onIndicatorRemove(indicator.id);
+                        });
                     }
                 }}
                 onOpenSettings={() => {
