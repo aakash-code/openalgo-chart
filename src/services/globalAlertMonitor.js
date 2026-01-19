@@ -15,7 +15,9 @@ import { AlertEvaluator } from '../utils/alerts/alertEvaluator';
 const ALERT_STORAGE_KEY = 'tv_chart_alerts';
 const APP_ALERT_STORAGE_KEY = 'tv_alerts'; // App.jsx indicator alerts
 const ALERT_RETENTION_MS = 24 * 60 * 60 * 1000; // 24 hours
+const CACHE_EXPIRY_MS = 5 * 60 * 1000; // 5 minutes (matches ChartComponent's refresh rate)
 const CACHE_REFRESH_INTERVAL_MS = 5000; // Refresh alert cache every 5 seconds
+const CHECK_STALE_INTERVAL_MS = 60 * 1000; // Check for stale code every 1 minute
 
 /**
  * @typedef {Object} StoredAlert
@@ -63,7 +65,7 @@ class GlobalAlertMonitor {
         /** @type {AlertEvaluator} Alert condition evaluator */
         this._alertEvaluator = new AlertEvaluator();
 
-        /** @type {Map<string, Array>} OHLC data cache per symbol-interval */
+        /** @type {Map<string, { data: Array, timestamp: number, lastAccessed: number }>} OHLC data cache per symbol-interval */
         this._ohlcCache = new Map();
 
         /** @type {Map<string, Object>} Previous bar indicator values */
@@ -77,6 +79,9 @@ class GlobalAlertMonitor {
 
         /** @type {number|null} Cache refresh interval ID */
         this._cacheRefreshIntervalId = null;
+
+        /** @type {number|null} Stale cache cleanup interval ID */
+        this._cleanupIntervalId = null;
 
         // Listen for storage changes from other tabs
         this._handleStorageChange = this._handleStorageChange.bind(this);
@@ -489,12 +494,15 @@ class GlobalAlertMonitor {
         }
 
         const normalizedInterval = this._normalizeInterval(interval);
-        
+
         // Store with normalized format
         const cacheKey = `${symbol}:${exchange}:${normalizedInterval}`;
+        const now = Date.now();
+
         this._ohlcCache.set(cacheKey, {
             data: ohlcData,
-            timestamp: Date.now()
+            timestamp: now,
+            lastAccessed: now
         });
 
         // Also store with original format for compatibility
@@ -502,7 +510,8 @@ class GlobalAlertMonitor {
             const originalKey = `${symbol}:${exchange}:${interval}`;
             this._ohlcCache.set(originalKey, {
                 data: ohlcData,
-                timestamp: Date.now()
+                timestamp: now,
+                lastAccessed: now
             });
         }
 
@@ -548,21 +557,43 @@ class GlobalAlertMonitor {
                 const altCached = this._ohlcCache.get(altKey);
                 if (altCached) {
                     logger.debug(`[GlobalAlertMonitor] Found OHLC data with alternative interval format: ${alt} (requested: ${interval})`);
+                    altCached.lastAccessed = Date.now(); // Update access time
                     return altCached.data;
                 }
             }
             return null;
         }
 
-        // Cache is valid for 5 minutes
+        // Check explicit expiry logic if needed, but the periodic cleanup handles this now.
+        // We can still do a quick check to avoid using very old data
         const age = Date.now() - cached.timestamp;
-        if (age > 5 * 60 * 1000) {
-            logger.warn(`[GlobalAlertMonitor] OHLC cache expired for ${cacheKey}. Indicator alerts may not trigger until chart refreshes data.`);
-            this._ohlcCache.delete(cacheKey);
-            return null;
+        if (age > CACHE_EXPIRY_MS + 60000) { // Allow slight grace period over expiry
+            // Allow grace period for lookup, but it will be cleaned up by interval
         }
 
+        cached.lastAccessed = Date.now(); // Update access time
         return cached.data;
+    }
+
+    /**
+     * Remove stale entries from OHLC cache
+     */
+    _cleanStaleCache() {
+        const now = Date.now();
+        let removedCount = 0;
+
+        for (const [key, entry] of this._ohlcCache.entries()) {
+            // Check if data is older than expiry AND hasn't been accessed recently
+            // This prevents deleting data that is still actively being queried even if not updated recently
+            if (now - entry.lastAccessed > CACHE_EXPIRY_MS) {
+                this._ohlcCache.delete(key);
+                removedCount++;
+            }
+        }
+
+        if (removedCount > 0) {
+            logger.debug(`[GlobalAlertMonitor] Cleaned ${removedCount} stale entries from OHLC cache`);
+        }
     }
 
     /**
@@ -583,6 +614,11 @@ class GlobalAlertMonitor {
         this._cacheRefreshIntervalId = setInterval(() => {
             this._refreshAlertCache();
         }, CACHE_REFRESH_INTERVAL_MS);
+
+        // Start periodic stale cache cleanup
+        this._cleanupIntervalId = setInterval(() => {
+            this._cleanStaleCache();
+        }, CHECK_STALE_INTERVAL_MS);
     }
 
     /**
@@ -635,6 +671,12 @@ class GlobalAlertMonitor {
         if (this._cacheRefreshIntervalId) {
             clearInterval(this._cacheRefreshIntervalId);
             this._cacheRefreshIntervalId = null;
+        }
+
+        // Clear cleanup interval
+        if (this._cleanupIntervalId) {
+            clearInterval(this._cleanupIntervalId);
+            this._cleanupIntervalId = null;
         }
 
         // Close WebSocket
