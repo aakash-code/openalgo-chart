@@ -13,7 +13,7 @@ import { useState, useCallback } from 'react';
  * @param {Function} options.onIndicatorRemove - Callback when indicator is removed
  * @returns {Object} Pane menu state and handlers
  */
-export const usePaneMenu = ({ chartRef, indicatorPanesMap, onIndicatorRemove }) => {
+export const usePaneMenu = ({ chartRef, chartContainerRef, indicatorPanesMap, onIndicatorRemove, onIndicatorMoveUp }) => {
     // Pane context menu state
     const [paneContextMenu, setPaneContextMenu] = useState({
         show: false,
@@ -38,33 +38,47 @@ export const usePaneMenu = ({ chartRef, indicatorPanesMap, onIndicatorRemove }) 
 
     // Maximize/Restore pane
     const handleMaximizePane = useCallback((paneId) => {
-        if (!chartRef.current) return;
+        if (!chartRef.current || !chartContainerRef?.current) return;
 
         try {
             const allPanes = chartRef.current.panes ? chartRef.current.panes() : [];
             if (allPanes.length <= 1) return; // Only main pane, nothing to maximize
 
+            const totalHeight = chartContainerRef.current.clientHeight;
+
             if (maximizedPane === paneId) {
-                // Restore all panes to their default heights
+                // RESTORE: Set indicator panes to default and main pane to remaining space
+                let usedHeight = 0;
+
+                // First, reset all indicator panes (index > 0)
                 allPanes.forEach((pane, index) => {
-                    if (index === 0) return; // Skip main pane
+                    if (index === 0) return; // Skip main pane for now
                     try {
-                        pane.setHeight(100); // Default height
+                        const defaultHeight = 100; // Default indicator height
+                        pane.setHeight(defaultHeight);
+                        usedHeight += defaultHeight;
                     } catch (e) { /* ignore */ }
                 });
+
+                // Then set main pane to fill remaining space
+                try {
+                    // Ensure main pane has at least some height
+                    const mainHeight = Math.max(100, totalHeight - usedHeight);
+                    allPanes[0].setHeight(mainHeight);
+                } catch (e) { /* ignore */ }
+
                 setMaximizedPane(null);
             } else {
-                // Maximize this pane, minimize others
+                // MAXIMIZE: Expand target pane to full height, collapse others
                 const targetPane = indicatorPanesMap.current.get(paneId);
                 if (!targetPane) return;
 
-                allPanes.forEach((pane, index) => {
-                    if (index === 0) return; // Skip main pane
+                allPanes.forEach((pane) => {
                     try {
                         if (pane === targetPane) {
-                            pane.setHeight(300); // Maximized height
+                            pane.setHeight(totalHeight); // Take full height
                         } else {
-                            pane.setHeight(0); // Hide other panes
+                            pane.setHeight(0); // Collapse completely (including main pane)
                         }
                     } catch (e) { /* ignore */ }
                 });
@@ -73,7 +87,7 @@ export const usePaneMenu = ({ chartRef, indicatorPanesMap, onIndicatorRemove }) 
         } catch (e) {
             console.warn('Error maximizing pane:', e);
         }
-    }, [chartRef, indicatorPanesMap, maximizedPane]);
+    }, [chartRef, chartContainerRef, indicatorPanesMap, maximizedPane]);
 
     // Collapse/Expand pane
     const handleCollapsePane = useCallback((paneId) => {
@@ -82,6 +96,22 @@ export const usePaneMenu = ({ chartRef, indicatorPanesMap, onIndicatorRemove }) 
         try {
             const pane = indicatorPanesMap.current.get(paneId);
             if (!pane) return;
+
+            // If we are collapsing the currently maximized pane, we must first "un-maximize" everything
+            if (maximizedPane) {
+                const allPanes = chartRef.current.panes ? chartRef.current.panes() : [];
+
+                // Reset all to default first
+                allPanes.forEach((p, index) => {
+                    if (index === 0) return;
+                    try { p.setHeight(100); } catch (e) { }
+                });
+
+                // If the pane being collapsed IS the maximized one, we effectively exit maximize mode
+                // If it's a different pane, we still probably want to exit maximize mode to behave intuitively?
+                // Let's assume yes: collapsing anything while maximized exits maximize mode to clear confusion.
+                setMaximizedPane(null);
+            }
 
             const newCollapsed = new Set(collapsedPanes);
             if (collapsedPanes.has(paneId)) {
@@ -97,28 +127,26 @@ export const usePaneMenu = ({ chartRef, indicatorPanesMap, onIndicatorRemove }) 
         } catch (e) {
             console.warn('Error collapsing pane:', e);
         }
-    }, [chartRef, indicatorPanesMap, collapsedPanes]);
+    }, [chartRef, indicatorPanesMap, collapsedPanes, maximizedPane]);
 
     // Move pane up
     const handleMovePaneUp = useCallback((paneId) => {
-        if (!chartRef.current) return;
-
-        try {
-            const allPanes = chartRef.current.panes ? chartRef.current.panes() : [];
-            const pane = indicatorPanesMap.current.get(paneId);
-            if (!pane) return;
-
-            const currentIndex = allPanes.indexOf(pane);
-            if (currentIndex <= 1) return; // Can't move above main pane or already at top
-
-            // Swap pane with the one above it using movePane API
-            if (chartRef.current.movePane) {
-                chartRef.current.movePane(currentIndex, currentIndex - 1);
-            }
-        } catch (e) {
-            console.warn('Error moving pane:', e);
+        // Use the passed callback to reorder indicators in the parent state
+        if (onIndicatorMoveUp) {
+            onIndicatorMoveUp(paneId);
+        } else if (chartRef.current && chartRef.current.movePane) {
+            // Fallback for theoretical future support or if used in context where movePane exists
+            try {
+                const allPanes = chartRef.current.panes ? chartRef.current.panes() : [];
+                const pane = indicatorPanesMap.current.get(paneId);
+                if (!pane) return;
+                const currentIndex = allPanes.indexOf(pane);
+                if (currentIndex > 1) {
+                    chartRef.current.movePane(currentIndex, currentIndex - 1);
+                }
+            } catch (e) { console.warn(e); }
         }
-    }, [chartRef, indicatorPanesMap]);
+    }, [chartRef, indicatorPanesMap, onIndicatorMoveUp]);
 
     // Delete pane (uses existing onIndicatorRemove)
     const handleDeletePane = useCallback((paneId) => {

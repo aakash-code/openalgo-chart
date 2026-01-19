@@ -1444,6 +1444,27 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
   // Watchlist handlers are now provided by useWatchlistHandlers hook
   // Symbol handlers are now provided by useSymbolHandlers hook
 
+  // Handle moving indicator up in the list (visually up in panes)
+  const handleIndicatorMoveUp = React.useCallback((indicatorId) => {
+    setCharts(prevCharts => prevCharts.map(chart => {
+      if (chart.id !== activeChartId) return chart;
+
+      const indicators = chart.indicators || [];
+      const index = indicators.findIndex(i => i.id === indicatorId);
+
+      // Can't move up if it's the first indicator (index 0) or not found
+      if (index <= 0) return chart;
+
+      const newIndicators = [...indicators];
+      // Swap with previous
+      const temp = newIndicators[index - 1];
+      newIndicators[index - 1] = newIndicators[index];
+      newIndicators[index] = temp;
+
+      return { ...chart, indicators: newIndicators };
+    }));
+  }, [activeChartId]);
+
   const toggleIndicator = (name) => {
     setCharts(prev => prev.map(chart => {
       if (chart.id !== activeChartId) return chart;
@@ -2092,6 +2113,7 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
             onIndicatorRemove={handleIndicatorRemove}
             onIndicatorVisibilityToggle={handleIndicatorVisibilityToggle}
             onIndicatorSettings={handleIndicatorSettings}
+            onIndicatorMoveUp={handleIndicatorMoveUp}
             chartAppearance={chartAppearance}
             onOpenOptionChain={handleOpenOptionChainForSymbol}
             oiLines={oiLines}

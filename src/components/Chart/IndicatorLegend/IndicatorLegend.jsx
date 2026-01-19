@@ -134,12 +134,52 @@ const IndicatorLegend = ({
     onRemove,
     onSettings,
     onPaneMenu,
+    maximizedPane = null // New prop
 }) => {
     // Separate indicators into main chart and pane indicators
     const mainIndicators = indicators.filter(ind => ind.pane === 'main');
     const paneIndicators = indicators.filter(ind => ind.pane && ind.pane !== 'main');
 
+    // If a pane is maximized, we only show that specific pane's legend at the top
+    // UNLESS the maximized pane is the main chart, in which case we just show main
+    const showingMaximized = maximizedPane !== null;
+    const isMainMaximized = maximizedPane === 'main'; // Adjust if your main pane ID is different, usually it isn't 'main' but let's see. 
+    // Actually, ChartComponent usually doesn't assign an ID to main pane for maximizing purposes in the same map?
+    // Let's rely on finding the indicator that matches the maximizedPane ID.
+
+    // If a pane is maximized, finding the indicators causing it
+    const maximizedPaneIndicators = showingMaximized
+        ? indicators.filter(ind => ind.id === maximizedPane || ind.pane === maximizedPane) // Handle both indicator ID based panes and grouped panes
+        : [];
+
     const leftOffset = isToolbarVisible ? '55px' : '10px';
+
+    // RENDER LOGIC WITH MAXIMIZED PANE
+    if (showingMaximized) {
+        // If main pane is maximized, show normal main indicators.
+        // If a separate pane is maximized, show ONLY that pane's indicators at the TOP.
+        // We need to know if maximizedPane corresponds to the main chart.
+        // Usually 'main' is not passed as paneId for maximizing? 
+        // Based on usePaneMenu, maximizing index 0 is skipped or handled. index 0 is main.
+
+        return (
+            <div className={styles.indicatorLegend} style={{ left: leftOffset }}>
+                <div className={styles.indicatorSources}>
+                    {maximizedPaneIndicators.map(indicator => (
+                        <IndicatorRow
+                            key={indicator.id || indicator.type}
+                            indicator={indicator}
+                            onVisibilityToggle={onVisibilityToggle}
+                            onRemove={onRemove}
+                            onSettings={onSettings}
+                            onPaneMenu={onPaneMenu}
+                            isPaneIndicator={true} // It acts as pane indicator but at top
+                        />
+                    ))}
+                </div>
+            </div>
+        );
+    }
 
     return (
         <>

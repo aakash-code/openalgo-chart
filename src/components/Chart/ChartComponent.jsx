@@ -98,11 +98,12 @@ const ChartComponent = forwardRef(({
     chartAppearance = {},
     strategyConfig = null, // { strategyType, legs: [{ id, symbol, direction, quantity }], exchange, displayName }
     onOpenOptionChain, // Callback to open option chain for current symbol
-    oiLines = null, // { maxCallOI, maxPutOI, maxPain } - OI levels to display as price lines
-    showOILines = false, // Whether to show OI lines
-    onOpenSettings, // Callback to open settings dialog
-    onOpenObjectTree, // Callback to open object tree panel
-    onOpenTradingPanel // Callback to open trading panel with pre-filled values (action, price, orderType)
+    oiLines = [], // OI Lines data
+    showOILines = false, // Toggle state for OI lines
+    onOpenSettings,
+    onOpenObjectTree,
+    onOpenTradingPanel, // Callback to open trading panel
+    onIndicatorMoveUp, // New prop for moving indicators
 }, ref) => {
     // Get authentication status
     const { isAuthenticated } = useUser();
@@ -292,9 +293,12 @@ const ChartComponent = forwardRef(({
         canPaneMoveUp
     } = usePaneMenu({
         chartRef,
+        chartContainerRef,
         indicatorPanesMap,
-        onIndicatorRemove
+        onIndicatorRemove,
+        onIndicatorMoveUp: onIndicatorMoveUp // Extract from props
     });
+
 
     // Multi-leg strategy mode refs
     const strategyWsRefs = useRef({}); // Map: legId -> WebSocket
@@ -805,7 +809,9 @@ const ChartComponent = forwardRef(({
 
         observer.observe(chartContainerRef.current, {
             childList: true,
-            subtree: true
+            subtree: true,
+            attributes: true, // Watch for style changes (height/position) on rows
+            attributeFilter: ['style', 'class', 'height']
         });
 
         // Update on resize
@@ -819,7 +825,7 @@ const ChartComponent = forwardRef(({
             observer.disconnect();
             resizeObserver.disconnect();
         };
-    }, [indicators]);
+    }, [indicators, collapsedPanes]);
 
 
 
@@ -4263,6 +4269,7 @@ const ChartComponent = forwardRef(({
                 onRemove={onIndicatorRemove}
                 onSettings={(indicatorType) => setIndicatorSettingsOpen(indicatorType)}
                 onPaneMenu={handlePaneMenu}
+                maximizedPane={maximizedPane}
             />
 
             {/* Pane Context Menu - TradingView style */}
@@ -4279,6 +4286,7 @@ const ChartComponent = forwardRef(({
                 onMoveUp={handleMovePaneUp}
                 onDelete={handleDeletePane}
                 onClose={closePaneMenu}
+                theme={theme}
             />
 
             {/* Per-Indicator Settings Dialog */}
