@@ -21,6 +21,8 @@ import html2canvas from 'html2canvas';
  * @param {string} params.currentSymbol - Current chart symbol
  * @param {Function} params.showToast - Toast notification function
  * @param {Function} params.showSnapshotToast - Snapshot toast function
+ * @param {boolean} params.isSequentialMode - If true, keep tool active after drawing
+ * @param {Function} params.setIsSequentialMode - State setter for sequential mode
  * @returns {Object} Tool handler functions
  */
 export const useToolHandlers = ({
@@ -36,7 +38,9 @@ export const useToolHandlers = ({
     currentSymbol,
     showToast,
     showSnapshotToast,
-    requestConfirm
+    requestConfirm,
+    isSequentialMode = false,
+    setIsSequentialMode
 }) => {
     // Toggle drawing toolbar visibility
     const toggleDrawingToolbar = useCallback(() => {
@@ -47,6 +51,11 @@ export const useToolHandlers = ({
     const handleToolChange = useCallback((tool) => {
         if (tool === 'magnet') {
             setIsMagnetMode(prev => !prev);
+        } else if (tool === 'sequential_mode') {
+            // Toggle sequential drawing mode
+            if (setIsSequentialMode) {
+                setIsSequentialMode(prev => !prev);
+            }
         } else if (tool === 'undo') {
             const activeRef = chartRefs.current[activeChartId];
             if (activeRef) {
@@ -104,10 +113,13 @@ export const useToolHandlers = ({
         }
     }, [chartRefs, activeChartId, setActiveTool, setIsMagnetMode, setIsDrawingsHidden, setIsDrawingsLocked, setIsTimerVisible]);
 
-    // Reset active tool after use
+    // Reset active tool after use (unless sequential mode is enabled)
     const handleToolUsed = useCallback(() => {
-        setActiveTool(null);
-    }, [setActiveTool]);
+        if (!isSequentialMode) {
+            setActiveTool(null);
+        }
+        // In sequential mode, keep the tool active so user can draw again
+    }, [setActiveTool, isSequentialMode]);
 
     // Undo wrapper
     const handleUndo = useCallback(() => {

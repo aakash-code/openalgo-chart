@@ -4,7 +4,7 @@ import styles from './DrawingToolbar.module.css';
 import * as Icons from './ToolIcons';
 import FloatingFavoritesToolbar from './FloatingFavoritesToolbar';
 
-const DrawingToolbar = ({ activeTool, onToolChange, isDrawingsLocked = false, isDrawingsHidden = false, isTimerVisible = false }) => {
+const DrawingToolbar = ({ activeTool, onToolChange, isDrawingsLocked = false, isDrawingsHidden = false, isTimerVisible = false, isSequentialMode = false }) => {
     // Group definitions
     const toolGroups = [
         {
@@ -96,6 +96,12 @@ const DrawingToolbar = ({ activeTool, onToolChange, isDrawingsLocked = false, is
             id: 'lock_group',
             items: [
                 { id: 'lock_all', icon: Icons.LockDrawingsIcon, label: 'Lock All Drawing Tools' }
+            ]
+        },
+        {
+            id: 'sequential_group',
+            items: [
+                { id: 'sequential_mode', icon: Icons.SequentialDrawingIcon, label: 'Sequential Drawing Mode' }
             ]
         },
         {
@@ -235,7 +241,8 @@ const DrawingToolbar = ({ activeTool, onToolChange, isDrawingsLocked = false, is
                 const isToggleActive =
                     (activeItem.id === 'lock_all' && isDrawingsLocked) ||
                     (activeItem.id === 'hide_drawings' && isDrawingsHidden) ||
-                    (activeItem.id === 'show_timer' && isTimerVisible);
+                    (activeItem.id === 'show_timer' && isTimerVisible) ||
+                    (activeItem.id === 'sequential_mode' && isSequentialMode);
                 const isActive = isToggleActive || activeTool === activeItem.id || group.items.some(i => i.id === activeTool);
                 const showArrow = group.items.length > 1;
 
@@ -350,7 +357,8 @@ DrawingToolbar.propTypes = {
     onToolChange: PropTypes.func.isRequired,
     isDrawingsLocked: PropTypes.bool,
     isDrawingsHidden: PropTypes.bool,
-    isTimerVisible: PropTypes.bool
+    isTimerVisible: PropTypes.bool,
+    isSequentialMode: PropTypes.bool
 };
 
 export default DrawingToolbar;

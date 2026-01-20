@@ -763,6 +763,7 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
   const [isReplayMode, setIsReplayMode] = useState(false);
   const [isDrawingsLocked, setIsDrawingsLocked] = useState(false);
   const [isDrawingsHidden, setIsDrawingsHidden] = useState(false);
+  const [isSequentialMode, setIsSequentialMode] = useState(false); // Sequential drawing mode - keeps tool active after use
   const [isTimerVisible, setIsTimerVisible] = useLocalStorage('oa_timer_visible', false);
   const [isSessionBreakVisible, setIsSessionBreakVisible] = useLocalStorage('oa_session_break_visible', false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -822,7 +823,9 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
     currentSymbol,
     showToast,
     showSnapshotToast,
-    requestConfirm
+    requestConfirm,
+    isSequentialMode,
+    setIsSequentialMode
   });
 
   // UI handlers extracted to hook
@@ -2029,6 +2032,7 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
             isDrawingsLocked={isDrawingsLocked}
             isDrawingsHidden={isDrawingsHidden}
             isTimerVisible={isTimerVisible}
+            isSequentialMode={isSequentialMode}
           />
         }
         drawingPropertiesPanel={
