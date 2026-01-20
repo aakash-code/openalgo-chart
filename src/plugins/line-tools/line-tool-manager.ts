@@ -113,6 +113,9 @@ export class LineToolManager extends PluginBase {
     // Current symbol name for alerts
     private _symbolName: string = '';
 
+    // Track shift key for 45-degree angle snapping
+    private _shiftPressed: boolean = false;
+
     private _setNoneButtonActive(): void {
         document.querySelectorAll('button').forEach(b => b.classList.remove('active'));
         const noneBtn = document.getElementById('btn-none');
@@ -1180,10 +1183,69 @@ export class LineToolManager extends PluginBase {
             if (logical === null || price === null) return;
 
             if (this._dragState.type === 'anchor') {
+                let targetPrice = price;
+                let targetLogical = logical;
+
+                // --- SHIFT SNAP for 45-degree angles ---
+                if (this._shiftPressed &&
+                    this._dragState.tool &&
+                    (this._dragState.tool.toolType === 'TrendLine' ||
+                        this._dragState.tool.toolType === 'Ray' ||
+                        this._dragState.tool.toolType === 'ExtendedLine' ||
+                        this._dragState.tool.toolType === 'Arrow')) {
+
+                    const tool = this._dragState.tool as any;
+                    // Support both _points (poly) and _p1/_p2 (legacy/simple)
+                    const points = tool._points || (tool._p1 && tool._p2 ? [tool._p1, tool._p2] : null);
+
+                    if (points && points.length === 2 && typeof this._dragState.anchorIndex === 'number') {
+                        const otherIndex = 1 - this._dragState.anchorIndex;
+                        const otherPoint = points[otherIndex];
+
+                        if (otherPoint) {
+                            // Convert both to screen coordinates to calculate angle visually
+                            const currentX = timeScale.logicalToCoordinate(logical);
+                            const currentY = series.priceToCoordinate(price);
+
+                            const startX = timeScale.logicalToCoordinate(otherPoint.logical);
+                            const startY = series.priceToCoordinate(otherPoint.price);
+
+                            if (currentX !== null && currentY !== null && startX !== null && startY !== null) {
+                                const dx = currentX - startX;
+                                const dy = currentY - startY; // Screen Y increases downwards
+                                const angleRad = Math.atan2(dy, dx);
+                                let angleDeg = angleRad * (180 / Math.PI);
+
+                                // Snap to nearest 45 degrees
+                                const snappedAngleDeg = Math.round(angleDeg / 45) * 45;
+                                const snappedAngleRad = snappedAngleDeg * (Math.PI / 180);
+
+                                // Calculate new screen position based on radius and snapped angle
+                                const radius = Math.sqrt(dx * dx + dy * dy);
+                                const newDx = radius * Math.cos(snappedAngleRad);
+                                const newDy = radius * Math.sin(snappedAngleRad);
+
+                                const newScreenX = startX + newDx;
+                                const newScreenY = startY + newDy;
+
+                                // Convert back to logical/price
+                                const snappedLogical = timeScale.coordinateToLogical(newScreenX);
+                                const snappedPrice = series.coordinateToPrice(newScreenY);
+
+                                if (snappedLogical !== null && snappedPrice !== null) {
+                                    targetLogical = snappedLogical;
+                                    targetPrice = snappedPrice;
+                                }
+                            }
+                        }
+                    }
+                }
+                // --- End SHIFT SNAP ---
+
                 // Update specific anchor point
                 this._dragState.tool.updatePointByIndex(
                     this._dragState.anchorIndex,
-                    { logical, price }
+                    { logical: targetLogical, price: targetPrice }
                 );
             } else {
                 // Move entire shape
@@ -2025,6 +2087,42 @@ export class LineToolManager extends PluginBase {
                 let logicalPoint: LogicalPoint = { logical, price };
                 const p1 = this._points[0] as LogicalPoint;
 
+                // --- 45-Degree Snap Logic ---
+                if (this._shiftPressed) {
+                    const p1X = timeScale.logicalToCoordinate(p1.logical as Logical);
+                    const p1Y = this.series.priceToCoordinate(p1.price);
+
+                    if (p1X !== null && p1Y !== null) {
+                        const dx = x - p1X;
+                        // Use original Y from mouse for angle calculation
+                        const dy = param.point.y - p1Y;
+
+                        // Calculate angle in radians
+                        const angle = Math.atan2(dy, dx);
+
+                        // Snap to nearest 45 degrees (PI/4)
+                        const snapRad = Math.PI / 4;
+                        const snappedAngle = Math.round(angle / snapRad) * snapRad;
+
+                        // Project current distance onto snapped angle
+                        const distance = Math.sqrt(dx * dx + dy * dy);
+                        const newDx = distance * Math.cos(snappedAngle);
+                        const newDy = distance * Math.sin(snappedAngle);
+
+                        // Convert back to logical/price
+                        const newScreenX = p1X + newDx;
+                        const newScreenY = p1Y + newDy;
+
+                        const newLogical = timeScale.coordinateToLogical(newScreenX);
+                        const newPrice = this.series.coordinateToPrice(newScreenY);
+
+                        if (newLogical !== null && newPrice !== null) {
+                            logicalPoint = { logical: newLogical as Logical, price: newPrice as any };
+                        }
+                    }
+                }
+                // -----------------------------
+
                 this._activeTool.updatePoints(p1, logicalPoint);
                 this.chart.timeScale().applyOptions({});
             }
@@ -2378,6 +2476,9 @@ export class LineToolManager extends PluginBase {
     };
 
     private _rawMouseMoveHandler = (event: MouseEvent) => {
+        // Track shift key for 45-degree angle snapping
+        this._shiftPressed = event.shiftKey;
+
         // Update toolbar position if it's following mouse (optional, for now we keep it static after show)
         // But if we want the collapsed icon to follow mouse until click:
         if (this._activeToolType !== 'None' && !this._activeTool && !this._selectedTool) {
