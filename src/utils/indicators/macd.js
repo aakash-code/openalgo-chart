@@ -44,8 +44,12 @@ export const calculateMACD = (data, fastPeriod = 12, slowPeriod = 26, signalPeri
   const macdValues = [];
   const startIndex = slowPeriod - fastPeriod;
 
+  // HIGH FIX BUG-4: Add bounds check to prevent accessing fastEMA beyond its length
   for (let i = 0; i < slowEMA.length; i++) {
-    macdValues.push(fastEMA[i + startIndex] - slowEMA[i]);
+    const fastIndex = i + startIndex;
+    if (fastIndex >= 0 && fastIndex < fastEMA.length) {
+      macdValues.push(fastEMA[fastIndex] - slowEMA[i]);
+    }
   }
 
   // Calculate signal line (EMA of MACD)
