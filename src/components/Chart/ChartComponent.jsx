@@ -34,6 +34,8 @@ import { calculateRangeBreakout } from '../../utils/indicators/rangeBreakout';
 import { calculatePriceActionRange } from '../../utils/indicators/priceActionRange';
 import { calculateANNStrategy } from '../../utils/indicators/annStrategy';
 import { calculateHilengaMilenga } from '../../utils/indicators/hilengaMilenga';
+import { calculateRiskPosition, autoDetectSide } from '../../utils/indicators/riskCalculator';
+import { createRiskCalculatorPrimitive, removeRiskCalculatorPrimitive } from '../../utils/indicators/riskCalculatorChart';
 import { TPOProfilePrimitive } from '../../plugins/tpo-profile/TPOProfilePrimitive';
 import { intervalToSeconds } from '../../utils/timeframes';
 import { logger } from '../../utils/logger.js';
@@ -45,6 +47,7 @@ import ReplayControls from '../Replay/ReplayControls';
 import ReplaySlider from '../Replay/ReplaySlider';
 import PriceScaleMenu from './PriceScaleMenu';
 import { VisualTrading } from '../../plugins/visual-trading/visual-trading';
+import RiskCalculatorPanel from '../RiskCalculatorPanel/RiskCalculatorPanel';
 import { useChartResize } from '../../hooks/useChartResize';
 import { useChartDrawings } from '../../hooks/useChartDrawings';
 import { useChartAlerts } from '../../hooks/useChartAlerts';
@@ -53,6 +56,7 @@ import { TOOL_MAP, hexToRgba, areSymbolsEquivalent, addFutureWhitespacePoints, f
 import { createSeries, transformData } from './utils/seriesFactories';
 import { createIndicatorSeries } from './utils/indicatorCreators';
 import { updateIndicatorSeries } from './utils/indicatorUpdaters';
+import { cleanupIndicators } from './utils/indicatorCleanup';
 import {
     DEFAULT_CANDLE_WINDOW,
     DEFAULT_RIGHT_OFFSET,
@@ -122,11 +126,14 @@ const ChartComponent = forwardRef(({
     useChartAlerts(lineToolManager, symbol, exchange);
 
     // Close context menu on click outside
+    // MEDIUM FIX ML-7: Remove early return to prevent event listener memory leak
     useEffect(() => {
-        if (!contextMenu.show) return;
-        const handleClickAway = () => setContextMenu({ show: false, x: 0, y: 0 });
-        document.addEventListener('click', handleClickAway);
-        return () => document.removeEventListener('click', handleClickAway);
+        if (contextMenu.show) {
+            const handleClickAway = () => setContextMenu({ show: false, x: 0, y: 0 });
+            document.addEventListener('click', handleClickAway);
+            return () => document.removeEventListener('click', handleClickAway);
+        }
+        // When show is false, no listener is added, and cleanup won't be needed
     }, [contextMenu.show]);
 
     const isActuallyLoadingRef = useRef(true); // Track if we're actually loading data (not just updating indicators) - start as true on mount
@@ -137,6 +144,7 @@ const ChartComponent = forwardRef(({
     // Unified Indicator Maps for Multi-Instance Support
     const indicatorSeriesMap = useRef(new Map()); // Map<id, Series | Object>
     const indicatorPanesMap = useRef(new Map());  // Map<id, Pane | Object>
+    const indicatorTypesMap = useRef(new Map());  // Map<id, type string> - Track indicator types for cleanup
 
     // Keeping these for now if used by specific legacy logic, but goal is to move to maps
     // Integrated indicator series refs (displayed within main chart)
@@ -145,6 +153,12 @@ const ChartComponent = forwardRef(({
 
     const chartReadyRef = useRef(false); // Track when chart is fully stable and ready for indicator additions
     const lineToolManagerRef = useRef(null);
+    // HIGH FIX ML-3: Store alert subscriptions for cleanup
+    const alertSubscriptionsRef = useRef({
+        alertsChanged: null,
+        alertTriggered: null,
+        priceScaleClicked: null
+    });
     const priceScaleTimerRef = useRef(null); // Ref for the candle countdown timer
     const tpoProfileRef = useRef(null); // Ref for TPO Profile primitive
     const oiPriceLinesRef = useRef({ maxCallOI: null, maxPutOI: null, maxPain: null }); // Refs for OI price lines
@@ -153,6 +167,7 @@ const ChartComponent = forwardRef(({
     const rangeBreakoutSeriesRef = useRef([]); // Array of line series for range breakout high/low
     const annStrategySeriesRef = useRef(null); // ANN Strategy prediction series
     const annStrategyPaneRef = useRef(null); // ANN Strategy pane reference
+    const riskCalculatorPrimitiveRef = useRef(null); // Risk Calculator draggable primitive
     const wsRef = useRef(null);
     const chartTypeRef = useRef(chartType);
     const dataRef = useRef([]);
@@ -183,10 +198,21 @@ const ChartComponent = forwardRef(({
     const strategyDataRef = useRef({}); // Map: legId -> data array
     const strategyLatestRef = useRef({}); // Map: legId -> latest price
 
+    // Component mount state for cleanup safety
+    const mountedRef = useRef(true);
+
     // Replay State
     const [isReplayMode, setIsReplayMode] = useState(false);
     const isReplayModeRef = useRef(false); // Ref to track replay mode in callbacks
     useEffect(() => { isReplayModeRef.current = isReplayMode; }, [isReplayMode]);
+
+    // Track component mounted state
+    useEffect(() => {
+        mountedRef.current = true;
+        return () => {
+            mountedRef.current = false;
+        };
+    }, []);
 
     const [isPlaying, setIsPlaying] = useState(false);
     const [replaySpeed, setReplaySpeed] = useState(1);
@@ -223,6 +249,8 @@ const ChartComponent = forwardRef(({
     const intervalRef = useRef(interval);
     const indicatorsRef = useRef(indicators);
     const isSessionBreakVisibleRef = useRef(isSessionBreakVisible);
+    // LOW FIX ML-13: Add strategyConfigRef to prevent large object closure capture
+    const strategyConfigRef = useRef(strategyConfig);
 
     // Keep refs in sync with props
     useEffect(() => { symbolRef.current = symbol; }, [symbol]);
@@ -230,6 +258,7 @@ const ChartComponent = forwardRef(({
     useEffect(() => { intervalRef.current = interval; }, [interval]);
     useEffect(() => { indicatorsRef.current = indicators; }, [indicators]);
     useEffect(() => { isSessionBreakVisibleRef.current = isSessionBreakVisible; }, [isSessionBreakVisible]);
+    useEffect(() => { strategyConfigRef.current = strategyConfig; }, [strategyConfig]);
 
     // Track previous symbol for alert persistence
     const prevSymbolRef = useRef({ symbol: null, exchange: null });
@@ -297,6 +326,9 @@ const ChartComponent = forwardRef(({
 
     // Indicator Legend Dropdown State
     const [indicatorDropdownOpen, setIndicatorDropdownOpen] = useState(false);
+
+    // Risk Calculator State
+    const [riskCalculatorResults, setRiskCalculatorResults] = useState(null);
 
     const [panePositions, setPanePositions] = useState({}); // Tracks vertical position of each indicator pane
     const indicatorDropdownRef = useRef(null);
@@ -446,7 +478,7 @@ const ChartComponent = forwardRef(({
                     replayIndexRef.current = startIndex;
                     // Initialize replay data display - show all candles initially
                     setTimeout(() => {
-                        if (updateReplayDataRef.current) {
+                        if (mountedRef.current && updateReplayDataRef.current) {
                             updateReplayDataRef.current(startIndex, false);
                         }
                     }, 0);
@@ -481,7 +513,11 @@ const ChartComponent = forwardRef(({
 
                 // Notify parent about replay mode change
                 if (onReplayModeChange) {
-                    setTimeout(() => onReplayModeChange(newMode), 0);
+                    setTimeout(() => {
+                        if (mountedRef.current) {
+                            onReplayModeChange(newMode);
+                        }
+                    }, 0);
                 }
 
                 return newMode;
@@ -648,9 +684,13 @@ const ChartComponent = forwardRef(({
         // Run update after delay to ensure chart is fully rendered
         const timer = setTimeout(updatePanePositions, 500);
 
+        // HIGH FIX ML-9: Track observer timeouts to ensure cleanup
+        const observerTimeouts = new Set();
+
         // Also observe for DOM changes
         const observer = new MutationObserver(() => {
-            setTimeout(updatePanePositions, 100);
+            const timeoutId = setTimeout(updatePanePositions, 100);
+            observerTimeouts.add(timeoutId);
         });
 
         observer.observe(chartContainerRef.current, {
@@ -660,12 +700,16 @@ const ChartComponent = forwardRef(({
 
         // Update on resize
         const resizeObserver = new ResizeObserver(() => {
-            setTimeout(updatePanePositions, 50);
+            const timeoutId = setTimeout(updatePanePositions, 50);
+            observerTimeouts.add(timeoutId);
         });
         resizeObserver.observe(chartContainerRef.current);
 
         return () => {
             clearTimeout(timer);
+            // HIGH FIX ML-9: Clear all observer-created timeouts
+            observerTimeouts.forEach(timeoutId => clearTimeout(timeoutId));
+            observerTimeouts.clear();
             observer.disconnect();
             resizeObserver.disconnect();
         };
@@ -947,6 +991,114 @@ const ChartComponent = forwardRef(({
         };
     }, []);
 
+    // Alt+Click Risk Calculator Entry/SL Setter - keyboard event listeners
+    const isAltPressedRef = useRef(false);
+    const [clickToSetMode, setClickToSetMode] = useState(null); // 'entry' | 'stopLoss' | null
+
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            if ((e.key === 'Alt' || e.altKey) && !isAltPressedRef.current) {
+                isAltPressedRef.current = true;
+                const riskCalcInd = indicators?.find(i => i.type === 'riskCalculator' && i.visible);
+                if (riskCalcInd && chartContainerRef.current) {
+                    chartContainerRef.current.style.cursor = 'crosshair';
+                }
+            }
+        };
+
+        const handleKeyUp = (e) => {
+            if (e.key === 'Alt' || !e.altKey) {
+                isAltPressedRef.current = false;
+                if (chartContainerRef.current && chartContainerRef.current.style.cursor === 'crosshair') {
+                    chartContainerRef.current.style.cursor = '';
+                }
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        window.addEventListener('keyup', handleKeyUp);
+
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown);
+            window.removeEventListener('keyup', handleKeyUp);
+        };
+    }, [indicators]);
+
+    // Alt+Click Risk Calculator Entry/SL Setter - chart click handler
+    useEffect(() => {
+        if (!chartContainerRef.current || !chartRef.current || !mainSeriesRef.current) return;
+
+        const handleAltClick = (event) => {
+            if (!isAltPressedRef.current) return;
+
+            const riskCalcInd = indicators?.find(i => i.type === 'riskCalculator' && i.visible);
+            if (!riskCalcInd) return;
+
+            event.preventDefault();
+            event.stopPropagation();
+
+            // Get price from click coordinates
+            const rect = chartContainerRef.current.getBoundingClientRect();
+            const y = event.clientY - rect.top;
+
+            try {
+                const price = mainSeriesRef.current.coordinateToPrice(y);
+                if (!price || price <= 0) return;
+
+                const updates = { ...riskCalcInd };
+
+                // Determine which parameter to set
+                if (!riskCalcInd.entryPrice || riskCalcInd.entryPrice === 0) {
+                    // Set entry first
+                    updates.entryPrice = price;
+                    setClickToSetMode('stopLoss');
+                } else if (!riskCalcInd.stopLossPrice || riskCalcInd.stopLossPrice === 0) {
+                    // Set stop loss second
+                    updates.stopLossPrice = price;
+                    setClickToSetMode(null);
+
+                    // Auto-detect side after both entry and SL are set
+                    const detectedSide = autoDetectSide(updates.entryPrice || riskCalcInd.entryPrice, price);
+                    if (detectedSide) {
+                        updates.side = detectedSide;
+                    }
+                } else {
+                    // Both exist - toggle between entry and SL based on current mode
+                    if (clickToSetMode === 'stopLoss') {
+                        updates.stopLossPrice = price;
+                        setClickToSetMode('entry');
+                    } else {
+                        updates.entryPrice = price;
+                        setClickToSetMode('stopLoss');
+                    }
+
+                    // Auto-detect side after updating
+                    const detectedSide = autoDetectSide(
+                        updates.entryPrice || riskCalcInd.entryPrice,
+                        updates.stopLossPrice || riskCalcInd.stopLossPrice
+                    );
+                    if (detectedSide) {
+                        updates.side = detectedSide;
+                    }
+                }
+
+                // Update indicator settings
+                if (onIndicatorSettings) {
+                    onIndicatorSettings(riskCalcInd.id, updates);
+                }
+            } catch (error) {
+                console.error('Error setting price from Alt+Click:', error);
+            }
+        };
+
+        const container = chartContainerRef.current;
+        container.addEventListener('click', handleAltClick, true);
+
+        return () => {
+            container.removeEventListener('click', handleAltClick, true);
+        };
+    }, [indicators, onIndicatorSettings, clickToSetMode]);
+
     // Shift+Click Quick Measure Tool - chart click handler
     useEffect(() => {
         if (!chartRef.current || !mainSeriesRef.current) return;
@@ -1217,7 +1369,8 @@ const ChartComponent = forwardRef(({
                 // Bridge internal alert list out to React so the Alerts tab
                 // can show alerts created from the chart-side UI.
                 if (userAlerts && typeof userAlerts.alertsChanged === 'function' && typeof userAlerts.alerts === 'function' && typeof onAlertsSync === 'function') {
-                    userAlerts.alertsChanged().subscribe(() => {
+                    // HIGH FIX ML-3: Store subscription for cleanup
+                    alertSubscriptionsRef.current.alertsChanged = userAlerts.alertsChanged().subscribe(() => {
                         try {
                             const rawAlerts = userAlerts.alerts() || [];
                             const mapped = rawAlerts.map(a => ({
@@ -1244,7 +1397,8 @@ const ChartComponent = forwardRef(({
                 // Also bridge trigger events so the app can mark alerts as Triggered
                 // and write log entries when the internal primitive fires.
                 if (userAlerts && typeof userAlerts.alertTriggered === 'function' && typeof onAlertTriggered === 'function') {
-                    userAlerts.alertTriggered().subscribe((evt) => {
+                    // HIGH FIX ML-3: Store subscription for cleanup
+                    alertSubscriptionsRef.current.alertTriggered = userAlerts.alertTriggered().subscribe((evt) => {
                         try {
                             onAlertTriggered({
                                 externalId: evt.alertId,
@@ -1261,7 +1415,8 @@ const ChartComponent = forwardRef(({
 
                 // Subscribe to price scale + button clicks to show context menu
                 if (userAlerts && typeof userAlerts.priceScaleClicked === 'function') {
-                    userAlerts.priceScaleClicked().subscribe((evt) => {
+                    // HIGH FIX ML-3: Store subscription for cleanup
+                    alertSubscriptionsRef.current.priceScaleClicked = userAlerts.priceScaleClicked().subscribe((evt) => {
                         try {
                             setPriceScaleMenu({
                                 visible: true,
@@ -1408,8 +1563,47 @@ const ChartComponent = forwardRef(({
         chartRef.current = chart;
         setChartInstance(chart);
 
+        // DEBUG: Expose chart and indicator management to window for browser console testing
+        if (typeof window !== 'undefined') {
+            window.__indicatorStore__ = {
+                getState: () => ({
+                    indicators: indicators || [],
+                    addIndicator: (indicator) => {
+                        if (onIndicatorSettings) {
+                            // Add indicator via callback
+                            const id = `ind_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                            const newIndicator = { ...indicator, id, visible: indicator.visible !== false };
+                            onIndicatorSettings(id, indicator.type, indicator.settings);
+                        }
+                    },
+                    removeIndicator: (id) => {
+                        if (onIndicatorRemove) {
+                            onIndicatorRemove(id);
+                        }
+                    },
+                    updateIndicator: (id, updates) => {
+                        if (onIndicatorSettings) {
+                            const indicator = (indicators || []).find(ind => ind.id === id);
+                            if (indicator) {
+                                onIndicatorSettings(id, indicator.type, { ...indicator.settings, ...updates });
+                            }
+                        }
+                    }
+                })
+            };
 
+            // Expose chart instance and maps
+            if (chartContainerRef.current) {
+                chartContainerRef.current.__chartInstance__ = chart;
+                chartContainerRef.current.__indicatorTypesMap__ = indicatorTypesMap;
+                chartContainerRef.current.__indicatorSeriesMap__ = indicatorSeriesMap;
+                chartContainerRef.current.__indicatorPanesMap__ = indicatorPanesMap;
+                chartContainerRef.current.__mainSeriesRef__ = mainSeriesRef.current;
+            }
 
+            // Also expose on window for easy access
+            window.chartInstance = chart;
+        }
 
         // Load older historical data when user scrolls back to the oldest loaded candle
         const loadOlderData = async () => {
@@ -1658,6 +1852,13 @@ const ChartComponent = forwardRef(({
             window.chartInstance = null;
             window.seriesInstance = null;
 
+            // HIGH FIX ML-2: Unsubscribe crosshair move listener
+            try {
+                chart.unsubscribeCrosshairMove(handleCrosshairMove);
+            } catch (e) {
+                console.warn('Failed to unsubscribe crosshair move', e);
+            }
+
             try {
                 chart.timeScale().unsubscribeVisibleLogicalRangeChange(handleVisibleTimeRangeChange);
             } catch (e) {
@@ -1677,12 +1878,46 @@ const ChartComponent = forwardRef(({
             // Destroy lineToolManager BEFORE chart.remove() to prevent "Object is disposed" errors
             // The line-tools plugin holds a reference to the chart and may try to call requestUpdate()
             if (lineToolManagerRef.current) {
+                // HIGH FIX ML-3: Unsubscribe alert event listeners before destroying manager
+                try {
+                    if (alertSubscriptionsRef.current.alertsChanged) {
+                        alertSubscriptionsRef.current.alertsChanged.unsubscribe(lineToolManagerRef.current);
+                        alertSubscriptionsRef.current.alertsChanged = null;
+                    }
+                    if (alertSubscriptionsRef.current.alertTriggered) {
+                        alertSubscriptionsRef.current.alertTriggered.unsubscribe(lineToolManagerRef.current);
+                        alertSubscriptionsRef.current.alertTriggered = null;
+                    }
+                    if (alertSubscriptionsRef.current.priceScaleClicked) {
+                        alertSubscriptionsRef.current.priceScaleClicked.unsubscribe(lineToolManagerRef.current);
+                        alertSubscriptionsRef.current.priceScaleClicked = null;
+                    }
+                } catch (error) {
+                    console.warn('Failed to unsubscribe alert listeners', error);
+                }
+
                 try {
                     lineToolManagerRef.current.destroy();
                 } catch (error) {
                     console.warn('Failed to destroy lineToolManager', error);
                 }
                 lineToolManagerRef.current = null;
+            }
+
+            // Detach primitives before removing chart to prevent memory leaks
+            if (mainSeriesRef.current) {
+                try {
+                    if (visualTradingRef.current) {
+                        mainSeriesRef.current.detachPrimitive(visualTradingRef.current);
+                        visualTradingRef.current = null;
+                    }
+                    if (seriesMarkersRef.current) {
+                        mainSeriesRef.current.detachPrimitive(seriesMarkersRef.current);
+                        seriesMarkersRef.current = null;
+                    }
+                } catch (error) {
+                    console.warn('Failed to detach primitives', error);
+                }
             }
 
             try {
@@ -1781,6 +2016,24 @@ const ChartComponent = forwardRef(({
                     }
                 } catch (err) {
                     console.warn('[Alerts] Failed to save alerts in cleanup:', err);
+                }
+
+                // HIGH FIX ML-3: Unsubscribe alert event listeners before clearing manager
+                try {
+                    if (alertSubscriptionsRef.current.alertsChanged) {
+                        alertSubscriptionsRef.current.alertsChanged.unsubscribe(lineToolManagerRef.current);
+                        alertSubscriptionsRef.current.alertsChanged = null;
+                    }
+                    if (alertSubscriptionsRef.current.alertTriggered) {
+                        alertSubscriptionsRef.current.alertTriggered.unsubscribe(lineToolManagerRef.current);
+                        alertSubscriptionsRef.current.alertTriggered = null;
+                    }
+                    if (alertSubscriptionsRef.current.priceScaleClicked) {
+                        alertSubscriptionsRef.current.priceScaleClicked.unsubscribe(lineToolManagerRef.current);
+                        alertSubscriptionsRef.current.priceScaleClicked = null;
+                    }
+                } catch (err) {
+                    console.warn('Failed to unsubscribe alert listeners before chart type switch', err);
                 }
 
                 try {
@@ -1926,7 +2179,7 @@ const ChartComponent = forwardRef(({
                     applyDefaultCandlePosition(transformedData.length, DEFAULT_CANDLE_WINDOW);
 
                     setTimeout(() => {
-                        if (!cancelled) {
+                        if (!cancelled && mountedRef.current) {
                             isActuallyLoadingRef.current = false;
                             setIsLoading(false);
                             updateAxisLabel();
@@ -1939,6 +2192,7 @@ const ChartComponent = forwardRef(({
                         const strategyExchange = strategyConfig.exchange || 'NFO';
 
                         // Handler for multi-leg real-time updates
+                        // LOW FIX ML-13: Use refs to avoid capturing large objects in closure
                         const handleStrategyTick = (legConfig) => (ticker) => {
                             if (cancelled || !ticker) return;
 
@@ -1948,14 +2202,18 @@ const ChartComponent = forwardRef(({
                             // Update the latest tick for this leg
                             strategyLatestRef.current[legConfig.id] = closePrice;
 
+                            // Use ref to avoid closure capture
+                            const currentStrategyConfig = strategyConfigRef.current;
+                            if (!currentStrategyConfig?.legs) return;
+
                             // Only update chart if all legs have ticks
-                            const allLegsHaveTicks = strategyConfig.legs.every(
+                            const allLegsHaveTicks = currentStrategyConfig.legs.every(
                                 leg => strategyLatestRef.current[leg.id] != null
                             );
                             if (!allLegsHaveTicks) return;
 
                             // Calculate combined price with direction multiplier
-                            const combinedClose = strategyConfig.legs.reduce((sum, leg) => {
+                            const combinedClose = currentStrategyConfig.legs.reduce((sum, leg) => {
                                 const price = strategyLatestRef.current[leg.id];
                                 const multiplier = leg.direction === 'buy' ? 1 : -1;
                                 const qty = leg.quantity || 1;
@@ -1965,7 +2223,9 @@ const ChartComponent = forwardRef(({
                             const currentData = dataRef.current;
                             if (!currentData || currentData.length === 0) return;
 
-                            const intervalSeconds = intervalToSeconds(interval);
+                            // Use ref to avoid closure capture
+                            const currentInterval = intervalRef.current;
+                            const intervalSeconds = intervalToSeconds(currentInterval);
                             if (!Number.isFinite(intervalSeconds) || intervalSeconds <= 0) return;
 
                             const lastIndex = currentData.length - 1;
@@ -2026,6 +2286,7 @@ const ChartComponent = forwardRef(({
                         });
                     } else {
                         // Regular symbol mode
+                        // LOW FIX ML-13: Use refs to avoid capturing large objects in closure
                         wsRef.current = subscribeToTicker(symbol, exchange, interval, (ticker) => {
                             if (cancelled || !ticker) return;
 
@@ -2040,7 +2301,9 @@ const ChartComponent = forwardRef(({
                             const currentData = dataRef.current;
                             if (!currentData || currentData.length === 0) return;
 
-                            const intervalSeconds = intervalToSeconds(interval);
+                            // Use ref to avoid closure capture
+                            const currentInterval = intervalRef.current;
+                            const intervalSeconds = intervalToSeconds(currentInterval);
                             if (!Number.isFinite(intervalSeconds) || intervalSeconds <= 0) return;
 
                             const lastIndex = currentData.length - 1;
@@ -2393,7 +2656,36 @@ const ChartComponent = forwardRef(({
             });
         }
     }, []);
+
+    // Callback for when user drags risk calculator price lines
+    const handleRiskCalculatorDrag = useCallback((lineType, newPrice) => {
+        const riskCalcInd = indicators.find(i => i.type === 'riskCalculator');
+        if (!riskCalcInd) return;
+
+        // ALWAYS preserve the current targetPrice to prevent recalculation
+        const updates = {
+            targetPrice: riskCalcInd.targetPrice || null
+        };
+
+        if (lineType === 'entry') {
+            updates.entryPrice = newPrice;
+        } else if (lineType === 'stopLoss') {
+            updates.stopLossPrice = newPrice;
+        } else if (lineType === 'target') {
+            updates.targetPrice = newPrice;
+        }
+
+        // This triggers re-calculation through onIndicatorSettings
+        if (onIndicatorSettings) {
+            onIndicatorSettings(riskCalcInd.id, updates);
+        }
+    }, [indicators, onIndicatorSettings]);
+
     const updateIndicators = useCallback((data, indicatorsArray) => {
+        console.log('[DEBUG] updateIndicators CALLED');
+        console.log('[DEBUG] Indicators param:', indicatorsArray?.length, 'indicators');
+        console.log('[DEBUG] Indicator IDs param:', indicatorsArray?.map(i => i.id));
+
         if (!chartRef.current) return;
 
         const canAddSeries = chartReadyRef.current;
@@ -2431,6 +2723,7 @@ const ChartComponent = forwardRef(({
 
                         if (series) {
                             indicatorSeriesMap.current.set(id, series);
+                            indicatorTypesMap.current.set(id, type); // Track type for cleanup
                         }
                     } catch (e) {
                         console.error(`Error creating series for ${type} (${id})`, e);
@@ -2447,6 +2740,8 @@ const ChartComponent = forwardRef(({
 
             });
         }
+
+        console.log('[DEBUG] validIds constructed with', validIds.size, 'IDs:', Array.from(validIds));
 
         // ========== FIRST RED CANDLE INDICATOR (5-min only) ==========
         const firstCandleInd = indicatorsArray?.find(ind => ind.type === 'firstCandle');
@@ -2512,12 +2807,22 @@ const ChartComponent = forwardRef(({
             if (result.allMarkers && result.allMarkers.length > 0) {
                 allMarkers.push(...result.allMarkers);
             }
+
+            // Track type for cleanup (array-based indicator)
+            if (firstCandleInd?.id) {
+                indicatorTypesMap.current.set(firstCandleInd.id, 'firstCandle');
+            }
         } else if (!firstCandleEnabled) {
             // Remove first candle series when disabled
+            console.log('[MANUAL CLEANUP] First Candle manual cleanup triggered. Series count:', firstCandleSeriesRef.current.length);
             for (const series of firstCandleSeriesRef.current) {
-                try { chartRef.current.removeSeries(series); } catch (e) { /* ignore */ }
+                try {
+                    console.log('[MANUAL CLEANUP] Removing First Candle series');
+                    chartRef.current.removeSeries(series);
+                } catch (e) { /* ignore */ }
             }
             firstCandleSeriesRef.current = [];
+            console.log('[MANUAL CLEANUP] First Candle array cleared');
         }
 
         // ========== RANGE BREAKOUT INDICATOR ==========
@@ -2588,13 +2893,89 @@ const ChartComponent = forwardRef(({
             if (result.markers && result.markers.length > 0) {
                 allMarkers.push(...result.markers);
             }
+
+            // Track type for cleanup (array-based indicator)
+            if (rangeBreakoutInd?.id) {
+                indicatorTypesMap.current.set(rangeBreakoutInd.id, 'rangeBreakout');
+            }
         } else if (!rangeBreakoutEnabled) {
             // Remove range breakout series when disabled
+            console.log('[MANUAL CLEANUP] Range Breakout manual cleanup triggered. Series count:', rangeBreakoutSeriesRef.current.length);
             for (const series of rangeBreakoutSeriesRef.current) {
-                try { chartRef.current.removeSeries(series); } catch (e) { /* ignore */ }
+                try {
+                    console.log('[MANUAL CLEANUP] Removing Range Breakout series');
+                    chartRef.current.removeSeries(series);
+                } catch (e) { /* ignore */ }
             }
             rangeBreakoutSeriesRef.current = [];
+            console.log('[MANUAL CLEANUP] Range Breakout array cleared');
             // Note: markers are handled collectively at the end of updateIndicators
+        }
+
+        // ==================== RISK CALCULATOR INDICATOR ====================
+        const riskCalculatorInd = indicatorsArray?.find(ind => ind.type === 'riskCalculator');
+        const riskCalculatorEnabled = riskCalculatorInd?.visible !== false;
+
+        if (riskCalculatorEnabled && riskCalculatorInd && mainSeriesRef.current) {
+            // Get current LTP for potential use
+            const currentLTP = dataRef.current.length > 0 ? dataRef.current[dataRef.current.length - 1]?.close : 0;
+
+            // Calculate risk position based on indicator settings
+            const params = {
+                capital: riskCalculatorInd.capital || 100000,
+                riskPercent: riskCalculatorInd.riskPercent || 2,
+                entryPrice: riskCalculatorInd.entryPrice || currentLTP || 0,
+                stopLossPrice: riskCalculatorInd.stopLossPrice || 0,
+                targetPrice: riskCalculatorInd.targetPrice || null,
+                riskRewardRatio: riskCalculatorInd.riskRewardRatio || 2,
+                side: riskCalculatorInd.side || 'BUY'
+            };
+
+            const results = calculateRiskPosition(params);
+
+            // Update state for panel display
+            setRiskCalculatorResults(results);
+
+            // Remove old primitive if exists
+            if (riskCalculatorPrimitiveRef.current) {
+                removeRiskCalculatorPrimitive({
+                    series: mainSeriesRef.current,
+                    primitiveRef: riskCalculatorPrimitiveRef
+                });
+            }
+
+            // Create new draggable primitive with updated prices
+            if (results && results.success) {
+                riskCalculatorPrimitiveRef.current = createRiskCalculatorPrimitive({
+                    series: mainSeriesRef.current,
+                    results: {
+                        ...results,
+                        showTarget: riskCalculatorInd.showTarget !== false
+                    },
+                    settings: {
+                        entryColor: riskCalculatorInd.entryColor || '#26a69a',
+                        stopLossColor: riskCalculatorInd.stopLossColor || '#ef5350',
+                        targetColor: riskCalculatorInd.targetColor || '#42a5f5',
+                        lineWidth: riskCalculatorInd.lineWidth || 2
+                    },
+                    side: riskCalculatorInd.side || 'BUY',
+                    onPriceChange: handleRiskCalculatorDrag
+                });
+
+                // Track type for cleanup (primitive-based indicator)
+                if (riskCalculatorInd?.id) {
+                    indicatorTypesMap.current.set(riskCalculatorInd.id, 'riskCalculator');
+                }
+            }
+        } else if (!riskCalculatorEnabled) {
+            // Remove risk calculator primitive when disabled
+            if (mainSeriesRef.current) {
+                removeRiskCalculatorPrimitive({
+                    series: mainSeriesRef.current,
+                    primitiveRef: riskCalculatorPrimitiveRef
+                });
+            }
+            setRiskCalculatorResults(null);
         }
 
         // ==================== PRICE ACTION RANGE (PAR) INDICATOR ====================
@@ -2655,15 +3036,25 @@ const ChartComponent = forwardRef(({
                     });
                 }
             });
+
+            // Track type for cleanup (array-based indicator)
+            if (parIndicator?.id) {
+                indicatorTypesMap.current.set(parIndicator.id, 'priceActionRange');
+            }
         } else if (!parEnabled) {
             // Remove PAR series when disabled
+            console.log('[MANUAL CLEANUP] PAR manual cleanup triggered. Series count:', priceActionRangeSeriesRef.current.length);
             for (const series of priceActionRangeSeriesRef.current) {
-                try { chartRef.current.removeSeries(series); } catch (e) { /* ignore */ }
+                try {
+                    console.log('[MANUAL CLEANUP] Removing PAR series');
+                    chartRef.current.removeSeries(series);
+                } catch (e) { /* ignore */ }
             }
             priceActionRangeSeriesRef.current = [];
+            console.log('[MANUAL CLEANUP] PAR array cleared');
         }
 
-        // --- CLEANUP LOGIC ---
+        // --- UNIFIED CLEANUP LOGIC ---
         // Identify IDs that are no longer in the list
         const idsToRemove = [];
         for (const id of indicatorSeriesMap.current.keys()) {
@@ -2672,34 +3063,50 @@ const ChartComponent = forwardRef(({
             }
         }
 
-        idsToRemove.forEach(id => {
-            const series = indicatorSeriesMap.current.get(id);
-            const pane = indicatorPanesMap.current.get(id);
+        // DEBUG: Log cleanup detection
+        console.log('[CLEANUP DEBUG] ===== CLEANUP DETECTION =====');
+        console.log('[CLEANUP DEBUG] Valid IDs from indicators:', Array.from(validIds));
+        console.log('[CLEANUP DEBUG] Series map keys (existing):', Array.from(indicatorSeriesMap.current.keys()));
+        console.log('[CLEANUP DEBUG] IDs to remove:', idsToRemove);
+        console.log('[CLEANUP DEBUG] Types map entries:', Array.from(indicatorTypesMap.current.entries()));
 
-            // Remove Series
-            if (series) {
-                const list = Array.isArray(series) ? series : (typeof series === 'object' && !series.applyOptions ? Object.values(series) : [series]);
-                list.forEach(s => {
-                    if (s) {
-                        try {
-                            if (pane) pane.removeSeries(s);
-                            else chartRef.current.removeSeries(s);
-                        } catch (e) { /* ignore */ }
-                    }
-                });
+        if (idsToRemove.length > 0) {
+            console.log('[CLEANUP] Detected indicators to remove:', idsToRemove);
+            console.log('[CLEANUP] Valid IDs:', Array.from(validIds));
+            console.log('[CLEANUP] Series map keys:', Array.from(indicatorSeriesMap.current.keys()));
+            console.log('[CLEANUP] Types map:', Array.from(indicatorTypesMap.current.entries()));
+        }
+
+        // Prepare cleanup context with all necessary references
+        const cleanupContext = {
+            chart: chartRef.current,
+            mainSeries: mainSeriesRef.current,
+            indicatorSeriesMap: indicatorSeriesMap.current,
+            indicatorPanesMap: indicatorPanesMap.current,
+            refs: {
+                tpoProfileRef,
+                riskCalculatorPrimitiveRef,
+                firstCandleSeriesRef,
+                rangeBreakoutSeriesRef,
+                priceActionRangeSeriesRef
             }
+        };
 
-            // Remove Pane
-            if (pane) {
-                try {
-                    const idx = chartRef.current.panes().indexOf(pane);
-                    if (idx > 0) chartRef.current.removePane(idx);
-                } catch (e) { console.warn('Error removing pane', e); }
-                indicatorPanesMap.current.delete(id);
-            }
+        // Execute unified cleanup using metadata-driven engine
+        if (idsToRemove.length > 0) {
+            console.log('[CLEANUP] Calling cleanupIndicators with', idsToRemove.length, 'indicators');
+            cleanupIndicators(idsToRemove, indicatorTypesMap.current, cleanupContext);
+            console.log('[CLEANUP] Cleanup complete');
 
-            indicatorSeriesMap.current.delete(id);
-        });
+            // Explicit ref null assignments for cleanup hygiene (Phase 4.1)
+            idsToRemove.forEach(id => {
+                const type = indicatorTypesMap.current.get(id);
+                if (type === 'annStrategy') {
+                    annStrategyPaneRef.current = null;
+                    console.log('[CLEANUP] Nulled annStrategyPaneRef');
+                }
+            });
+        }
 
         // Set all collected markers on the main candlestick series using lightweight-charts v5 API
         // This ensures markers from all indicators (ANN Strategy, Range Breakout, etc.) are displayed together
@@ -2836,6 +3243,9 @@ const ChartComponent = forwardRef(({
 
     // Separate effect for indicators to prevent data reload
     useEffect(() => {
+        console.log('[DEBUG] Indicators effect TRIGGERED. Count:', indicators?.length);
+        console.log('[DEBUG] Indicator IDs:', indicators?.map(i => i.id));
+
         if (dataRef.current.length > 0) {
             // Update indicators with current data
             try {
@@ -3244,8 +3654,10 @@ const ChartComponent = forwardRef(({
         if (preserveView && currentVisibleRange && chartRef.current) {
             try {
                 setTimeout(() => {
-                    const timeScale = chartRef.current.timeScale();
-                    timeScale.setVisibleLogicalRange(currentVisibleRange);
+                    if (mountedRef.current && chartRef.current) {
+                        const timeScale = chartRef.current.timeScale();
+                        timeScale.setVisibleLogicalRange(currentVisibleRange);
+                    }
                 }, 0);
             } catch (e) {
                 // Ignore errors
@@ -3301,7 +3713,7 @@ const ChartComponent = forwardRef(({
             // Restore the visible range to maintain zoom level
             // Use setTimeout to ensure data update has completed
             setTimeout(() => {
-                if (chartRef.current && fullDataRef.current && fullDataRef.current.length > 0) {
+                if (mountedRef.current && chartRef.current && fullDataRef.current && fullDataRef.current.length > 0) {
                     try {
                         const timeScale = chartRef.current.timeScale();
 
@@ -3469,22 +3881,24 @@ const ChartComponent = forwardRef(({
                 // Restore visible range after data update to prevent view jumping
                 if (currentVisibleRange && chartRef.current) {
                     setTimeout(() => {
-                        try {
-                            const timeScale = chartRef.current.timeScale();
-                            // Adjust the range to end at the clicked candle if needed
-                            const clickedCandleTime = fullDataRef.current[clickedIndex]?.time;
-                            if (clickedCandleTime && currentVisibleRange.to > clickedCandleTime) {
-                                // The current view extends beyond the clicked time, adjust it
-                                const rangeWidth = currentVisibleRange.to - currentVisibleRange.from;
-                                const newTo = clickedCandleTime;
-                                const newFrom = newTo - rangeWidth;
-                                timeScale.setVisibleRange({ from: newFrom, to: newTo });
-                            } else {
-                                // Keep the current view
-                                timeScale.setVisibleRange(currentVisibleRange);
+                        if (mountedRef.current && chartRef.current) {
+                            try {
+                                const timeScale = chartRef.current.timeScale();
+                                // Adjust the range to end at the clicked candle if needed
+                                const clickedCandleTime = fullDataRef.current[clickedIndex]?.time;
+                                if (clickedCandleTime && currentVisibleRange.to > clickedCandleTime) {
+                                    // The current view extends beyond the clicked time, adjust it
+                                    const rangeWidth = currentVisibleRange.to - currentVisibleRange.from;
+                                    const newTo = clickedCandleTime;
+                                    const newFrom = newTo - rangeWidth;
+                                    timeScale.setVisibleRange({ from: newFrom, to: newTo });
+                                } else {
+                                    // Keep the current view
+                                    timeScale.setVisibleRange(currentVisibleRange);
+                                }
+                            } catch (e) {
+                                // Ignore
                             }
-                        } catch (e) {
-                            // Ignore
                         }
                     }, 0);
                 }
@@ -3627,7 +4041,7 @@ const ChartComponent = forwardRef(({
 
                             // Set again after a short delay to override any auto-zoom
                             setTimeout(() => {
-                                if (chartRef.current) {
+                                if (mountedRef.current && chartRef.current) {
                                     try {
                                         chartRef.current.timeScale().setVisibleRange(targetRange);
                                     } catch (e) {
@@ -3638,7 +4052,7 @@ const ChartComponent = forwardRef(({
 
                             // Set one more time after data update completes
                             setTimeout(() => {
-                                if (chartRef.current) {
+                                if (mountedRef.current && chartRef.current) {
                                     try {
                                         chartRef.current.timeScale().setVisibleRange(targetRange);
                                     } catch (e) {
@@ -3691,17 +4105,17 @@ const ChartComponent = forwardRef(({
 
         const tpoIndicators = (indicators || []).filter(ind => ind.type === 'tpo');
 
-        // Remove old TPO primitives
-        if (tpoProfileRef.current) {
+        // ALWAYS remove old TPO primitive first (fixes visibility toggle issue)
+        if (tpoProfileRef.current && mainSeriesRef.current) {
             try {
                 mainSeriesRef.current.detachPrimitive(tpoProfileRef.current);
             } catch (e) {
-                // Primitive might already be detached
+                console.warn('[TPO] Error detaching primitive:', e);
             }
             tpoProfileRef.current = null;
         }
 
-        // Add new TPO if exists and is visible
+        // Only recreate TPO if it exists AND is visible
         if (tpoIndicators.length > 0 && dataRef.current.length > 0) {
             const tpoInd = tpoIndicators[0];
             const tpoId = tpoInd.id;
@@ -3712,8 +4126,9 @@ const ChartComponent = forwardRef(({
             // Check if indicator is visible (default to true if not specified)
             const isVisible = tpoInd.visible !== false;
 
+            // Skip creation if not visible (primitive already removed above)
             if (!isVisible) {
-                console.log('[TPO] Indicator hidden, skipping render');
+                console.log('[TPO] Indicator hidden, primitive removed');
                 return;
             }
 
@@ -3745,6 +4160,11 @@ const ChartComponent = forwardRef(({
                 tpoPrimitive.setData(profiles);
                 mainSeriesRef.current.attachPrimitive(tpoPrimitive);
                 tpoProfileRef.current = tpoPrimitive;
+
+                // Track type for cleanup (primitive-based indicator)
+                if (tpoInd?.id) {
+                    indicatorTypesMap.current.set(tpoInd.id, 'tpo');
+                }
 
                 console.log('[TPO] Primitive attached successfully');
             } catch (error) {
@@ -3992,6 +4412,47 @@ const ChartComponent = forwardRef(({
                 onOpenOptionChain={onOpenOptionChain}
                 onClose={() => setContextMenu({ show: false, x: 0, y: 0 })}
             />
+
+            {/* Risk Calculator Panel */}
+            {(() => {
+                const riskCalcInd = indicators?.find(ind => ind.type === 'riskCalculator');
+                const shouldShow = riskCalcInd && riskCalcInd.visible !== false && (riskCalcInd.showPanel !== false);
+
+                if (!shouldShow || !riskCalculatorResults) return null;
+
+                // Get current LTP for "Use LTP" button
+                const currentLTP = dataRef.current.length > 0 ? dataRef.current[dataRef.current.length - 1]?.close : 0;
+
+                return (
+                    <RiskCalculatorPanel
+                        results={riskCalculatorResults}
+                        params={{
+                            capital: riskCalcInd.capital || 100000,
+                            riskPercent: riskCalcInd.riskPercent || 2,
+                            entryPrice: riskCalcInd.entryPrice || 0,
+                            stopLossPrice: riskCalcInd.stopLossPrice || 0,
+                            targetPrice: riskCalcInd.targetPrice || 0,
+                            riskRewardRatio: riskCalcInd.riskRewardRatio || 2,
+                            side: riskCalcInd.side || 'BUY',
+                            showTarget: riskCalcInd.showTarget !== false
+                        }}
+                        onClose={() => {
+                            // Toggle off the showPanel setting
+                            if (onIndicatorSettings && riskCalcInd.id) {
+                                onIndicatorSettings(riskCalcInd.id, { ...riskCalcInd, showPanel: false });
+                            }
+                        }}
+                        onUpdateSettings={(updates) => {
+                            // Update indicator settings when values change in panel
+                            if (onIndicatorSettings && riskCalcInd.id) {
+                                onIndicatorSettings(riskCalcInd.id, updates);
+                            }
+                        }}
+                        ltp={currentLTP}
+                        draggable={true}
+                    />
+                );
+            })()}
 
         </div >
 

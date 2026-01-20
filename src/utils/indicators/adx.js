@@ -86,7 +86,8 @@ export function calculateADX(data, period = 14) {
     const dxValues = [firstDX];
 
     // Calculate subsequent values using Wilder's smoothing
-    for (let i = period; i < trueRanges.length; i++) {
+    // HIGH FIX BUG-5: Add bounds check to prevent accessing data[i+1] beyond array length
+    for (let i = period; i < trueRanges.length && (i + 1) < data.length; i++) {
         // Wilder's smoothing: smoothed = prev_smoothed - (prev_smoothed / period) + current_value
         smoothedTR = smoothedTR - (smoothedTR / period) + trueRanges[i];
         smoothedPlusDM = smoothedPlusDM - (smoothedPlusDM / period) + plusDMs[i];

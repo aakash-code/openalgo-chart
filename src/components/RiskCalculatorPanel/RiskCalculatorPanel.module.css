@@ -1,0 +1,497 @@
+/* Risk Calculator Panel Styles */
+
+.panel {
+  background: rgba(30, 30, 30, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  color: #ffffff;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 13px;
+  min-width: 280px;
+  max-width: 320px;
+  z-index: 1000;
+  user-select: none;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  background: rgba(50, 50, 50, 0.8);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px 8px 0 0;
+  cursor: move;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.headerButtons {
+  display: flex;
+  gap: 6px;
+}
+
+.iconButton,
+.closeButton {
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s;
+}
+
+.iconButton:hover,
+.closeButton:hover {
+  color: #ffffff;
+}
+
+.closeButton:hover {
+  color: #ef5350;
+}
+
+.content {
+  padding: 12px;
+}
+
+.section {
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.section:last-child {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+}
+
+.label {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 12px;
+}
+
+.value {
+  font-weight: 600;
+  font-size: 13px;
+  text-align: right;
+}
+
+/* Color coding for specific values */
+.risk {
+  color: #ef5350;
+}
+
+.entry {
+  color: #26a69a;
+}
+
+.stopLoss {
+  color: #ef5350;
+}
+
+.target {
+  color: #42a5f5;
+}
+
+.reward {
+  color: #66bb6a;
+}
+
+.quantity {
+  color: #ffa726;
+  font-size: 14px;
+}
+
+.rrRatio {
+  color: #ab47bc;
+  font-weight: 700;
+}
+
+/* Error state */
+.error {
+  padding: 20px 12px;
+  color: #ef5350;
+  text-align: center;
+  font-size: 12px;
+}
+
+/* Error message in edit mode */
+.errorMessage {
+  background: rgba(239, 83, 80, 0.1);
+  border: 1px solid rgba(239, 83, 80, 0.3);
+  border-radius: 4px;
+  color: #ef5350;
+  padding: 8px 10px;
+  font-size: 12px;
+  margin-bottom: 12px;
+  text-align: center;
+}
+
+/* Calculate button */
+.calculateButton {
+  width: 100%;
+  background: linear-gradient(135deg, #42a5f5 0%, #478ed1 100%);
+  border: none;
+  border-radius: 6px;
+  color: #ffffff;
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 12px;
+  transition: all 0.2s;
+  box-shadow: 0 2px 6px rgba(66, 165, 245, 0.3);
+}
+
+.calculateButton:hover {
+  background: linear-gradient(135deg, #478ed1 0%, #42a5f5 100%);
+  box-shadow: 0 4px 10px rgba(66, 165, 245, 0.4);
+  transform: translateY(-1px);
+}
+
+.calculateButton:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 4px rgba(66, 165, 245, 0.3);
+}
+
+/* Minimized panel */
+.panelMinimized {
+  background: rgba(30, 30, 30, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  color: #ffffff;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: move;
+  z-index: 1000;
+  user-select: none;
+}
+
+.panelMinimized span {
+  color: #ffa726;
+}
+
+.panelMinimized button {
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s;
+}
+
+.panelMinimized button:hover {
+  color: #ffffff;
+}
+
+/* Settings Styles */
+.settings {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  background: rgba(30, 30, 30, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  color: #ffffff;
+}
+
+.inputGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.inputGroup label {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.inputGroup input[type="number"],
+.inputGroup select {
+  background: rgba(50, 50, 50, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  color: #ffffff;
+  padding: 8px 10px;
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.inputGroup input[type="number"]:focus,
+.inputGroup select:focus {
+  border-color: #42a5f5;
+}
+
+.inputGroup input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.useLtp {
+  background: rgba(66, 165, 245, 0.2);
+  border: 1px solid rgba(66, 165, 245, 0.4);
+  border-radius: 4px;
+  color: #42a5f5;
+  padding: 6px 10px;
+  font-size: 11px;
+  cursor: pointer;
+  margin-top: 4px;
+  transition: all 0.2s;
+}
+
+.useLtp:hover {
+  background: rgba(66, 165, 245, 0.3);
+  border-color: #42a5f5;
+}
+
+/* Template Selector Styles */
+.templateSelectorWrapper {
+  margin-bottom: 8px;
+}
+
+.templateSelect {
+  background: rgba(50, 50, 50, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  color: #ffffff;
+  padding: 8px 10px;
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.2s;
+  width: 100%;
+}
+
+.templateSelect:focus {
+  border-color: #42a5f5;
+}
+
+/* Save Template Dialog */
+.saveTemplateDialog {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+}
+
+.dialogBackdrop {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(2px);
+}
+
+.dialogContent {
+  position: relative;
+  background: rgba(30, 30, 30, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  padding: 20px;
+  min-width: 300px;
+  max-width: 400px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  z-index: 1;
+}
+
+.dialogTitle {
+  margin: 0 0 12px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.dialogDescription {
+  margin: 0 0 16px 0;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+  line-height: 1.6;
+}
+
+.dialogInput {
+  width: 100%;
+  background: rgba(50, 50, 50, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  color: #ffffff;
+  padding: 10px 12px;
+  font-size: 13px;
+  outline: none;
+  margin-bottom: 16px;
+  transition: border-color 0.2s;
+}
+
+.dialogInput:focus {
+  border-color: #42a5f5;
+}
+
+.dialogActions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.dialogCancelButton,
+.dialogSaveButton {
+  padding: 8px 16px;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: none;
+}
+
+.dialogCancelButton {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.dialogCancelButton:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+}
+
+.dialogSaveButton {
+  background: linear-gradient(135deg, #42a5f5 0%, #478ed1 100%);
+  color: #ffffff;
+}
+
+.dialogSaveButton:hover:not(:disabled) {
+  background: linear-gradient(135deg, #478ed1 0%, #42a5f5 100%);
+  box-shadow: 0 2px 8px rgba(66, 165, 245, 0.4);
+}
+
+.dialogSaveButton:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Validation Styles */
+.inputWrapper {
+  position: relative;
+}
+
+.inputGroup input.inputError,
+.inputGroup select.inputError {
+  border-color: #ef5350 !important;
+  background: rgba(239, 83, 80, 0.05);
+}
+
+.inputGroup input.inputValid,
+.inputGroup select.inputValid {
+  border-color: #26a69a;
+}
+
+.inputGroup input.inputWarning,
+.inputGroup select.inputWarning {
+  border-color: #ffa726;
+}
+
+.validCheck {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #26a69a;
+  font-size: 14px;
+  pointer-events: none;
+}
+
+.fieldError {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #ef5350;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  line-height: 1.3;
+}
+
+.fieldWarning {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #ffa726;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  line-height: 1.3;
+}
+
+.suggestionButton {
+  background: rgba(66, 165, 245, 0.2);
+  border: 1px solid rgba(66, 165, 245, 0.4);
+  color: #42a5f5;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.suggestionButton:hover {
+  background: rgba(66, 165, 245, 0.3);
+  border-color: #42a5f5;
+}
+
+.calculateButton:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+.calculateButton:disabled:hover {
+  transform: none;
+  box-shadow: 0 2px 6px rgba(66, 165, 245, 0.3);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .panel {
+    min-width: 260px;
+    max-width: 300px;
+    font-size: 12px;
+  }
+
+  .header {
+    font-size: 13px;
+  }
+
+  .value {
+    font-size: 12px;
+  }
+}

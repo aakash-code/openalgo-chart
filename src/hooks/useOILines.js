@@ -168,13 +168,15 @@ export function useOILines(symbol, exchange, enabled = true) {
         // Initial fetch
         fetchOIData();
 
+        // HIGH FIX ML-5: Clear interval BEFORE async function to prevent accumulation
+        // Rapid symbol changes can create multiple intervals if cleanup is async
+        if (intervalRef.current) {
+            clearInterval(intervalRef.current);
+            intervalRef.current = null;
+        }
+
         // Setup auto-refresh interval
         const setupInterval = async () => {
-            // Clear any existing interval
-            if (intervalRef.current) {
-                clearInterval(intervalRef.current);
-            }
-
             intervalRef.current = setInterval(async () => {
                 // Skip if already fetching (prevents overlapping async operations)
                 if (isFetchingRef.current) {

@@ -42,14 +42,16 @@ export const useTradingData = (isAuthenticated) => {
 
     // Shared fetch logic
     const fetchData = useCallback(async (source = 'auto') => {
-        if (!isAuthenticated || fetchInProgress.current) return;
+        if (!isAuthenticated) return;
 
+        // MEDIUM FIX RC-9: Atomic check-and-set to prevent concurrent fetches
+        if (fetchInProgress.current) return;
         fetchInProgress.current = true;
         try {
             console.log(`[useTradingData] Fetching data (source: ${source})`);
 
-            // Fetch all data in parallel
-            const [posData, orderData, fundsData, holdingsData, tradeData] = await Promise.all([
+            // HIGH FIX RC-4: Use Promise.allSettled to prevent one failure from canceling all fetches
+            const results = await Promise.allSettled([
                 getPositionBook(),
                 getOrderBook(),
                 getFunds(),
@@ -58,6 +60,21 @@ export const useTradingData = (isAuthenticated) => {
             ]);
 
             if (!isMounted.current) return;
+
+            // Extract successful results, use fallback for failures
+            const posData = results[0].status === 'fulfilled' ? results[0].value : [];
+            const orderData = results[1].status === 'fulfilled' ? results[1].value : { orders: [] };
+            const fundsData = results[2].status === 'fulfilled' ? results[2].value : null;
+            const holdingsData = results[3].status === 'fulfilled' ? results[3].value : [];
+            const tradeData = results[4].status === 'fulfilled' ? results[4].value : { trades: [] };
+
+            // Log any failures for debugging
+            results.forEach((result, index) => {
+                if (result.status === 'rejected') {
+                    const apiNames = ['positions', 'orders', 'funds', 'holdings', 'trades'];
+                    console.warn(`[useTradingData] Failed to fetch ${apiNames[index]}:`, result.reason);
+                }
+            });
 
             // Positions
             const positionsList = Array.isArray(posData) ? posData : [];

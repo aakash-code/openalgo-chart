@@ -27,3 +27,9 @@ package-lock.json
 # Temporary test and config files
 .playwright-mcp/
 .claude/
+
+# Playwright artifacts
+/test-results/
+/playwright-report/
+/playwright/.cache/
+/playwright/.auth/

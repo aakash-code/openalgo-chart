@@ -263,10 +263,13 @@ export const getMultiOptionGreeks = async (symbols, options = {}) => {
         const batch = symbols.slice(i, i + MAX_BATCH_SIZE);
         const result = await fetchMultiGreeksBatch(batch, options);
 
-        if (result && result.data) {
+        if (result && Array.isArray(result.data)) {
             allData.push(...result.data);
             totalSuccess += result.summary?.success || 0;
             totalFailed += result.summary?.failed || 0;
+        } else if (result) {
+            console.warn('[OptionsAPI] Invalid response data format:', result);
+            totalFailed += batch.length;
         }
     }
 

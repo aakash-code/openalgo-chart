@@ -13,6 +13,8 @@ const STORAGE_KEY = 'optionChainCache';
 const noFOSymbolsCache = new Set();
 const NO_FO_STORAGE_KEY = 'noFOSymbolsCache';
 const NO_FO_CACHE_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
+// MEDIUM FIX ML-10: Add max size to prevent unbounded growth
+const MAX_NO_FO_CACHE_SIZE = 500; // Reasonable limit for non-F&O symbols
 
 // Rate limit protection
 let lastApiCallTime = 0;
@@ -76,7 +78,11 @@ export const loadNoFOCacheFromStorage = () => {
             console.log('[OptionChainCache] Loaded', noFOSymbolsCache.size, 'non-F&O symbols from cache');
         }
     } catch (e) {
+        // Phase 4.3: Enhanced error recovery - clear corrupted cache and reset
         console.warn('[OptionChainCache] Failed to load no-F&O cache:', e.message);
+        console.log('[OptionChainCache] Clearing corrupted no-F&O cache from localStorage');
+        localStorage.removeItem(NO_FO_STORAGE_KEY);
+        noFOSymbolsCache.clear();
     }
 };
 
@@ -107,6 +113,14 @@ export const isNonFOSymbol = (symbol) => noFOSymbolsCache.has(symbol?.toUpperCas
 export const markAsNonFOSymbol = (symbol) => {
     const upperSymbol = symbol?.toUpperCase();
     if (upperSymbol) {
+        // MEDIUM FIX ML-10: Evict oldest entry if cache is at capacity
+        if (noFOSymbolsCache.size >= MAX_NO_FO_CACHE_SIZE) {
+            // Convert Set to Array and remove first (oldest) entry
+            const entries = Array.from(noFOSymbolsCache);
+            const toRemove = entries[0];
+            noFOSymbolsCache.delete(toRemove);
+            console.log('[OptionChainCache] Evicted oldest non-F&O symbol:', toRemove);
+        }
         noFOSymbolsCache.add(upperSymbol);
         saveNoFOCacheToStorage();
         console.log('[OptionChainCache] Marked as non-F&O symbol:', upperSymbol);
@@ -129,7 +143,11 @@ export const loadCacheFromStorage = () => {
             console.log('[OptionChainCache] Loaded', optionChainCache.size, 'cache entries from storage');
         }
     } catch (e) {
+        // Phase 4.3: Enhanced error recovery - clear corrupted cache and reset
         console.warn('[OptionChainCache] Failed to load cache from storage:', e.message);
+        console.log('[OptionChainCache] Clearing corrupted option chain cache from localStorage');
+        localStorage.removeItem(STORAGE_KEY);
+        optionChainCache.clear();
     }
 };
 
@@ -203,7 +221,11 @@ export const loadExpiryCacheFromStorage = () => {
             console.log('[OptionChainCache] Loaded', expiryCache.size, 'expiry cache entries');
         }
     } catch (e) {
+        // Phase 4.3: Enhanced error recovery - clear corrupted cache and reset
         console.warn('[OptionChainCache] Failed to load expiry cache:', e.message);
+        console.log('[OptionChainCache] Clearing corrupted expiry cache from localStorage');
+        localStorage.removeItem(EXPIRY_STORAGE_KEY);
+        expiryCache.clear();
     }
 };
 

@@ -322,4 +322,11 @@ class GlobalAlertMonitor {
 // Singleton instance
 export const globalAlertMonitor = new GlobalAlertMonitor();
 
+// HIGH FIX ML-6: Add beforeunload handler to close WebSocket on page exit
+if (typeof window !== 'undefined') {
+    window.addEventListener('beforeunload', () => {
+        globalAlertMonitor.stop();
+    });
+}
+
 export default globalAlertMonitor;

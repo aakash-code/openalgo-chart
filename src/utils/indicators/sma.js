@@ -16,11 +16,22 @@ export const calculateSMA = (data, period) => {
     if (i < period - 1) {
       continue; // Not enough data
     }
+
     let sum = 0;
+    let validCount = 0;
     for (let j = 0; j < period; j++) {
-      sum += data[i - j].close;
+      const index = i - j;
+      // Validate array bounds and data integrity
+      if (index >= 0 && index < data.length && data[index] && typeof data[index].close === 'number' && Number.isFinite(data[index].close)) {
+        sum += data[index].close;
+        validCount++;
+      }
     }
-    smaData.push({ time: data[i].time, value: sum / period });
+
+    // Only add SMA point if we have enough valid data
+    if (validCount === period) {
+      smaData.push({ time: data[i].time, value: sum / period });
+    }
   }
   return smaData;
 };

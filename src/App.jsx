@@ -197,6 +197,7 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
 
   // Toast timeout refs for cleanup
   const snapshotToastTimeoutRef = React.useRef(null);
+  const toastTimeoutsRef = React.useRef(new Map()); // Track timeout IDs for each toast
 
   // Show toast helper with queue management - defined early for use in hooks
   const showToast = (message, type = 'error', action = null) => {
@@ -207,19 +208,36 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
       // Add new toast, limit to MAX_TOASTS (oldest removed first)
       const updated = [...prev, newToast];
       if (updated.length > MAX_TOASTS) {
+        // Clear timeouts for removed toasts
+        const removedToasts = prev.slice(0, prev.length - MAX_TOASTS + 1);
+        removedToasts.forEach(toast => {
+          const timeoutId = toastTimeoutsRef.current.get(toast.id);
+          if (timeoutId) {
+            clearTimeout(timeoutId);
+            toastTimeoutsRef.current.delete(toast.id);
+          }
+        });
         return updated.slice(-MAX_TOASTS);
       }
       return updated;
     });
 
-    // Auto-remove after 5 seconds
-    setTimeout(() => {
+    // Auto-remove after 5 seconds (Phase 4.2: store timeout ID for cleanup)
+    const timeoutId = setTimeout(() => {
       setToasts(prev => prev.filter(t => t.id !== id));
+      toastTimeoutsRef.current.delete(id);
     }, 5000);
+    toastTimeoutsRef.current.set(id, timeoutId);
   };
 
   // Remove a specific toast
   const removeToast = (id) => {
+    // Clear associated timeout
+    const timeoutId = toastTimeoutsRef.current.get(id);
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+      toastTimeoutsRef.current.delete(id);
+    }
     setToasts(prev => prev.filter(t => t.id !== id));
   };
 
@@ -230,6 +248,22 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
     setSnapshotToast(message);
     snapshotToastTimeoutRef.current = setTimeout(() => setSnapshotToast(null), 3000);
   };
+
+  // Cleanup all toast timeouts on unmount (Phase 4.2)
+  useEffect(() => {
+    return () => {
+      // Clear all toast timeouts
+      toastTimeoutsRef.current.forEach(timeoutId => {
+        clearTimeout(timeoutId);
+      });
+      toastTimeoutsRef.current.clear();
+
+      // Clear snapshot toast timeout
+      if (snapshotToastTimeoutRef.current) {
+        clearTimeout(snapshotToastTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const [isAlertOpen, setIsAlertOpen] = useState(false);
   const [alertPrice, setAlertPrice] = useState(null);
@@ -798,7 +832,17 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
   // Cleanup on unmount to prevent memory leak from orphaned interval
   useEffect(() => {
     initTimeService();
-    return () => destroyTimeService();
+
+    // Add beforeunload handler for page refresh/close scenarios (CRITICAL FIX ML-1)
+    const handleBeforeUnload = () => {
+      destroyTimeService();
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      destroyTimeService();
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
   }, []);
 
   // Persist multiple watchlists

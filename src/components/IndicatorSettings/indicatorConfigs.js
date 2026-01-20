@@ -316,6 +316,31 @@ export const indicatorConfigs = {
             { key: 'lineWidth', label: 'Line Width', type: 'number', min: 1, max: 5, default: 1 },
         ],
     },
+
+    riskCalculator: {
+        name: 'Risk Calculator',
+        fullName: 'Risk Calculator (Position Sizing)',
+        pane: 'main',
+        category: 'risk',
+        description: 'Calculate position size and risk-reward based on entry, stop loss, and capital',
+        inputs: [
+            { key: 'capital', label: 'Capital (₹)', type: 'number', min: 1000, step: 1000, default: 100000 },
+            { key: 'riskPercent', label: 'Risk %', type: 'number', min: 0.5, max: 5, step: 0.1, default: 2 },
+            { key: 'side', label: 'Side', type: 'select', options: ['BUY', 'SELL'], default: 'BUY' },
+            { key: 'entryPrice', label: 'Entry Price', type: 'number', min: 0, step: 0.01, default: 0 },
+            { key: 'stopLossPrice', label: 'Stop Loss', type: 'number', min: 0, step: 0.01, default: 0 },
+            { key: 'targetPrice', label: 'Target Price', type: 'number', min: 0, step: 0.01, default: 0 },
+            { key: 'riskRewardRatio', label: 'Risk:Reward', type: 'select', options: [1, 1.5, 2, 2.5, 3, 4, 5], default: 2 },
+            { key: 'showTarget', label: 'Show Target', type: 'boolean', default: true },
+            { key: 'showPanel', label: 'Show Info Panel', type: 'boolean', default: true },
+        ],
+        style: [
+            { key: 'entryColor', label: 'Entry Line', type: 'color', default: '#26a69a' },
+            { key: 'stopLossColor', label: 'Stop Loss Line', type: 'color', default: '#ef5350' },
+            { key: 'targetColor', label: 'Target Line', type: 'color', default: '#42a5f5' },
+            { key: 'lineWidth', label: 'Line Width', type: 'number', min: 1, max: 4, default: 2 },
+        ],
+    },
 };
 
 

@@ -182,7 +182,13 @@ export const isTradingHoliday = async (date, exchange = 'NSE') => {
         date = new Date().toISOString().split('T')[0];
     }
 
-    const year = parseInt(date.split('-')[0]);
+    // LOW FIX P3-4: Add defensive type safety for date parsing
+    const dateParts = date.split('-');
+    const year = parseInt(dateParts[0], 10);
+    if (!Number.isFinite(year) || year < 1900 || year > 2100) {
+        console.warn('[MarketService] Invalid year extracted from date:', date);
+        return { isHoliday: false };
+    }
     const holidays = await getMarketHolidays(year);
 
     const holiday = holidays.find(h => h.date === date);

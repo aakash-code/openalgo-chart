@@ -94,7 +94,9 @@ export const useOptionChainData = (options = {}) => {
         } catch (err) {
             if (mountedRef.current && requestId === expiryRequestIdRef.current) {
                 logger.error('[useOptionChainData] Failed to fetch expiries:', err);
-                setError(err.message || 'Failed to fetch expiries');
+                // Safely extract error message
+                const errorMessage = err instanceof Error ? err.message : String(err || 'Failed to fetch expiries');
+                setError(errorMessage);
                 setAvailableExpiries([]);
             }
             return [];

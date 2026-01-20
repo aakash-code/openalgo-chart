@@ -7,6 +7,17 @@ import logger from '../utils/logger.js';
 import { getApiBase, getLoginUrl, getApiKey, convertInterval } from './apiConfig';
 
 /**
+ * HIGH FIX BUG-10: Safe parseFloat that prevents NaN propagation
+ * @param {*} value - Value to parse
+ * @param {number} fallback - Fallback value if parsing fails (default: 0)
+ * @returns {number} Parsed number or fallback
+ */
+const safeParseFloat = (value, fallback = 0) => {
+    const parsed = parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+/**
  * Module-scoped cache for previous close prices
  * Used by WebSocket updates which don't include prev_close (mode 2)
  */
@@ -134,16 +145,17 @@ export const getKlines = async (symbol, exchange = 'NSE', interval = '1d', limit
                     time = 0;
                 }
 
+                // HIGH FIX BUG-10: Use safeParseFloat to prevent NaN propagation
                 return {
                     time,
-                    open: parseFloat(d.open),
-                    high: parseFloat(d.high),
-                    low: parseFloat(d.low),
-                    close: parseFloat(d.close),
-                    volume: parseFloat(d.volume || 0),
+                    open: safeParseFloat(d.open),
+                    high: safeParseFloat(d.high),
+                    low: safeParseFloat(d.low),
+                    close: safeParseFloat(d.close),
+                    volume: safeParseFloat(d.volume, 0),
                 };
             }).filter(candle =>
-                candle.time > 0 && [candle.open, candle.high, candle.low, candle.close].every(value => Number.isFinite(value))
+                candle && candle.time > 0 && [candle.open, candle.high, candle.low, candle.close].every(value => Number.isFinite(value))
             );
 
             // Sort by time ascending and remove duplicates (keep the last occurrence for each timestamp)
@@ -222,16 +234,17 @@ export const getHistoricalKlines = async (symbol, exchange = 'NSE', interval = '
                     time = 0;
                 }
 
+                // HIGH FIX BUG-10: Use safeParseFloat to prevent NaN propagation
                 return {
                     time,
-                    open: parseFloat(d.open),
-                    high: parseFloat(d.high),
-                    low: parseFloat(d.low),
-                    close: parseFloat(d.close),
-                    volume: parseFloat(d.volume || 0),
+                    open: safeParseFloat(d.open),
+                    high: safeParseFloat(d.high),
+                    low: safeParseFloat(d.low),
+                    close: safeParseFloat(d.close),
+                    volume: safeParseFloat(d.volume, 0),
                 };
             }).filter(candle =>
-                candle.time > 0 && [candle.open, candle.high, candle.low, candle.close].every(value => Number.isFinite(value))
+                candle && candle.time > 0 && [candle.open, candle.high, candle.low, candle.close].every(value => Number.isFinite(value))
             );
 
             // Sort by time ascending and remove duplicates (keep the last occurrence for each timestamp)
@@ -295,11 +308,13 @@ export const getTickerPrice = async (symbol, exchange = 'NSE', signal) => {
                         if (jsonError.message) errorMessage = jsonError.message;
                         else errorMessage = errorData;
                     } catch (e) {
+                        logger.debug('[ChartData] Failed to parse error response as JSON:', e);
                         errorMessage = errorData;
                     }
                 }
             } catch (e) {
-                // Ignore read error
+                logger.debug('[ChartData] Failed to read error response:', e);
+                // Use default error message
             }
 
             throw new Error(errorMessage);

@@ -69,8 +69,12 @@ export const hexToRgba = (hex, alpha) => {
  * @returns {boolean} True if symbols are equivalent
  */
 export const areSymbolsEquivalent = (s1, s2) => {
-  if (!s1 || !s2) return false;
-  const normalize = (s) => s.split(':')[0].trim().toUpperCase();
+  // Validate inputs are non-empty strings
+  if (!s1 || !s2 || typeof s1 !== 'string' || typeof s2 !== 'string') return false;
+  const normalize = (s) => {
+    const parts = s.split(':');
+    return parts.length > 0 ? parts[0].trim().toUpperCase() : '';
+  };
   return normalize(s1) === normalize(s2);
 };
 

@@ -48,6 +48,20 @@ const MONTH_TO_NUM = Object.fromEntries(
 );
 
 /**
+ * Phase 4.4: Safe parsing helpers for type coercion safety
+ * Ensures NaN values are never propagated into the application
+ */
+const safeParseFloat = (value, fallback = 0) => {
+    const parsed = parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const safeParseInt = (value, fallback = 0) => {
+    const parsed = parseInt(value, 10);
+    return Number.isInteger(parsed) ? parsed : fallback;
+};
+
+/**
  * Parse expiry date string in DDMMMYY format to Date object
  * @param {string} expiryStr - Expiry string like "30DEC25"
  * @returns {Date|null} Date object or null if invalid
@@ -211,38 +225,51 @@ export const getOptionChain = async (underlying, exchange = 'NFO', expiryDate = 
 
         // Transform chain data to our format
         // API returns: { strike, ce: { symbol, label, ltp, bid, ask, oi, volume, ... }, pe: { ... } }
-        const chain = (result.chain || []).map(row => ({
-            strike: parseFloat(row.strike),
-            ce: row.ce ? {
-                symbol: row.ce.symbol,
-                ltp: parseFloat(row.ce.ltp || 0),
-                prevClose: parseFloat(row.ce.prev_close || 0),
-                open: parseFloat(row.ce.open || 0),
-                high: parseFloat(row.ce.high || 0),
-                low: parseFloat(row.ce.low || 0),
-                bid: parseFloat(row.ce.bid || 0),
-                ask: parseFloat(row.ce.ask || 0),
-                oi: parseInt(row.ce.oi || 0),
-                volume: parseInt(row.ce.volume || 0),
-                label: row.ce.label, // ITM, ATM, OTM
-                lotSize: parseInt(row.ce.lotsize || row.ce.lot_size || 0)
-            } : null,
-            pe: row.pe ? {
-                symbol: row.pe.symbol,
-                ltp: parseFloat(row.pe.ltp || 0),
-                prevClose: parseFloat(row.pe.prev_close || 0),
-                open: parseFloat(row.pe.open || 0),
-                high: parseFloat(row.pe.high || 0),
-                low: parseFloat(row.pe.low || 0),
-                bid: parseFloat(row.pe.bid || 0),
-                ask: parseFloat(row.pe.ask || 0),
-                oi: parseInt(row.pe.oi || 0),
-                volume: parseInt(row.pe.volume || 0),
-                label: row.pe.label, // ITM, ATM, OTM
-                lotSize: parseInt(row.pe.lotsize || row.pe.lot_size || 0)
-            } : null,
-            straddlePremium: (parseFloat(row.ce?.ltp || 0) + parseFloat(row.pe?.ltp || 0)).toFixed(2)
-        }))
+        const chain = (result.chain || [])
+            .filter(row => row && typeof row.strike !== 'undefined') // Filter out invalid rows
+            .map(row => {
+                // Phase 4.4: Use safe parsing helpers to prevent NaN propagation
+                const strike = safeParseFloat(row.strike);
+                const ceLtp = safeParseFloat(row.ce?.ltp);
+                const peLtp = safeParseFloat(row.pe?.ltp);
+
+                // Calculate straddle premium (already safe due to safeParseFloat)
+                const straddlePremium = (ceLtp + peLtp).toFixed(2);
+
+                return {
+                    strike,
+                    // CRITICAL FIX BUG-1: Add additional null checks for nested properties
+                    ce: (row.ce && typeof row.ce === 'object') ? {
+                        symbol: row.ce.symbol || '',
+                        ltp: ceLtp,
+                        prevClose: safeParseFloat(row.ce.prev_close),
+                        open: safeParseFloat(row.ce.open),
+                        high: safeParseFloat(row.ce.high),
+                        low: safeParseFloat(row.ce.low),
+                        bid: safeParseFloat(row.ce.bid),
+                        ask: safeParseFloat(row.ce.ask),
+                        oi: safeParseInt(row.ce.oi),
+                        volume: safeParseInt(row.ce.volume),
+                        label: row.ce.label || '', // ITM, ATM, OTM
+                        lotSize: safeParseInt(row.ce.lotsize || row.ce.lot_size)
+                    } : null,
+                    pe: (row.pe && typeof row.pe === 'object') ? {
+                        symbol: row.pe.symbol || '',
+                        ltp: peLtp,
+                        prevClose: safeParseFloat(row.pe.prev_close),
+                        open: safeParseFloat(row.pe.open),
+                        high: safeParseFloat(row.pe.high),
+                        low: safeParseFloat(row.pe.low),
+                        bid: safeParseFloat(row.pe.bid),
+                        ask: safeParseFloat(row.pe.ask),
+                        oi: safeParseInt(row.pe.oi),
+                        volume: safeParseInt(row.pe.volume),
+                        label: row.pe.label || '', // ITM, ATM, OTM
+                        lotSize: safeParseInt(row.pe.lotsize || row.pe.lot_size)
+                    } : null,
+                    straddlePremium
+                };
+            })
 
         // Parse expiry date for display
         const expiryDateObj = parseExpiryDate(result.expiryDate);
@@ -361,6 +388,11 @@ export const getAvailableExpiries = async (underlying, exchange = null, instrume
 
         // Convert from API format (DD-MMM-YY like "10-JUL-25") to our internal format (DDMMMYY like "10JUL25")
         const expiries = expiryDates.map(dateStr => {
+            // HIGH FIX BUG-9: Add type check to prevent .replace() on non-string
+            if (typeof dateStr !== 'string') {
+                console.warn('[OptionChain] Non-string expiry date:', dateStr);
+                return String(dateStr || '');
+            }
             // Remove hyphens: "10-JUL-25" -> "10JUL25"
             return dateStr.replace(/-/g, '');
         });
@@ -542,18 +574,22 @@ export const combineMultiLegOHLC = (legDataArrays, legConfigs) => {
  * @param {string} peSymbol - PE option symbol
  * @param {string} exchange - Exchange (NFO, BFO)
  * @param {string} interval - Time interval
+ * @param {AbortSignal} signal - Optional abort signal for request cancellation
  * @returns {Promise<Array>} Combined OHLC data
  */
-export const fetchStraddlePremium = async (ceSymbol, peSymbol, exchange = 'NFO', interval = '5m') => {
+export const fetchStraddlePremium = async (ceSymbol, peSymbol, exchange = 'NFO', interval = '5m', signal) => {
     try {
         const [ceData, peData] = await Promise.all([
-            getKlines(ceSymbol, exchange, interval),
-            getKlines(peSymbol, exchange, interval)
+            getKlines(ceSymbol, exchange, interval, 1000, signal),
+            getKlines(peSymbol, exchange, interval, 1000, signal)
         ]);
 
         return combinePremiumOHLC(ceData, peData);
     } catch (error) {
-        console.error('Error fetching straddle premium:', error);
+        // Don't log AbortError as it's expected during rapid symbol changes
+        if (error.name !== 'AbortError') {
+            console.error('Error fetching straddle premium:', error);
+        }
         return [];
     }
 };

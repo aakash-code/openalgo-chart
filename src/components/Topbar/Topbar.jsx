@@ -689,6 +689,9 @@ const Topbar = ({
                                                             <div className={styles.dropdownItem} onClick={(e) => { e.stopPropagation(); onAddIndicator('firstCandle'); }}>First Red Candle</div>
                                                             <div className={styles.dropdownItem} onClick={(e) => { e.stopPropagation(); onAddIndicator('rangeBreakout'); }}>Range Breakout</div>
                                                             <div className={styles.dropdownItem} onClick={(e) => { e.stopPropagation(); onAddIndicator('annStrategy'); }}>ANN Strategy</div>
+                                                            <div className={styles.dropdownDivider}></div>
+                                                            <div className={styles.dropdownSection}>Risk Management</div>
+                                                            <div className={styles.dropdownItem} onClick={(e) => { e.stopPropagation(); onAddIndicator('riskCalculator'); }}>Risk Calculator</div>
                                                         </div>
                                                     )}
 

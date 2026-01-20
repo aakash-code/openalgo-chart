@@ -9,6 +9,8 @@ import logger from '../utils/logger';
 // Cache for 20-day average volumes
 const volumeCache = new Map();
 const CACHE_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
+// MEDIUM FIX ML-11: Add max size to prevent unbounded growth
+const MAX_VOLUME_CACHE_SIZE = 200; // Limit to 200 symbols
 
 /**
  * Format date to YYYY-MM-DD
@@ -57,6 +59,15 @@ export const get20DayVolume = async (symbol, exchange = 'NSE') => {
         days: last20Days.length,
         volumes: last20Days.map(d => d.volume || 0),
       };
+
+      // MEDIUM FIX ML-11: Evict oldest entries before caching new one
+      if (volumeCache.size >= MAX_VOLUME_CACHE_SIZE) {
+        const entries = Array.from(volumeCache.entries())
+          .sort((a, b) => a[1].timestamp - b[1].timestamp);
+        const toRemove = entries[0];
+        volumeCache.delete(toRemove[0]);
+        logger.debug('[VolumeHistory] Evicted oldest cache entry:', toRemove[0]);
+      }
 
       // Cache the result
       volumeCache.set(cacheKey, {

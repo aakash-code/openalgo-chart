@@ -92,14 +92,17 @@ const AccountPanel = ({
 
     // Unified positions search logic
     const uniquePositionsExchanges = useMemo(() => {
+        if (!Array.isArray(positions)) return [];
         return [...new Set(positions.map(p => p.exchange).filter(Boolean))];
     }, [positions]);
 
     const uniquePositionsProducts = useMemo(() => {
+        if (!Array.isArray(positions)) return [];
         return [...new Set(positions.map(p => p.product).filter(Boolean))];
     }, [positions]);
 
     const filteredPositions = useMemo(() => {
+        if (!Array.isArray(positions)) return [];
         return positions.filter(p => {
             const matchesSearch = !positionsSearchTerm ||
                 p.symbol?.toLowerCase().includes(positionsSearchTerm.toLowerCase());

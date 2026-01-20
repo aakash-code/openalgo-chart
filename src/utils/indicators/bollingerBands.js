@@ -12,25 +12,28 @@ export const calculateBollingerBands = (data, period = 20, stdDev = 2) => {
     return { upper: [], middle: [], lower: [] };
   }
 
+  // HIGH FIX BUG-6: Extra defensive check to prevent division by zero
+  const safePeriod = Math.max(1, period);
+
   const upper = [];
   const middle = [];
   const lower = [];
 
-  for (let i = period - 1; i < data.length; i++) {
+  for (let i = safePeriod - 1; i < data.length; i++) {
     // Calculate SMA
     let sum = 0;
-    for (let j = 0; j < period; j++) {
+    for (let j = 0; j < safePeriod; j++) {
       sum += data[i - j].close;
     }
-    const sma = sum / period;
+    const sma = sum / safePeriod;
 
     // Calculate standard deviation
     let squaredDiffSum = 0;
-    for (let j = 0; j < period; j++) {
+    for (let j = 0; j < safePeriod; j++) {
       const diff = data[i - j].close - sma;
       squaredDiffSum += diff * diff;
     }
-    const sd = Math.sqrt(squaredDiffSum / period);
+    const sd = Math.sqrt(squaredDiffSum / safePeriod);
 
     const time = data[i].time;
     middle.push({ time, value: sma });

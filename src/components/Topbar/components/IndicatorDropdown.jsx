@@ -15,7 +15,7 @@ export function IndicatorDropdown({ position, onAddIndicator, onClose }) {
             className={styles.indicatorDropdown}
             style={{ top: position.top, left: position.left }}
         >
-            <div className={styles.dropdownSection}>Moving Averages</div>
+            <div className={styles.dropdownSection}>Moving Averages TEST</div>
             <div className={styles.dropdownItem} onClick={(e) => { e.stopPropagation(); handleClick('sma'); }}>SMA</div>
             <div className={styles.dropdownItem} onClick={(e) => { e.stopPropagation(); handleClick('ema'); }}>EMA</div>
 
@@ -61,6 +61,10 @@ export function IndicatorDropdown({ position, onAddIndicator, onClose }) {
             <div className={styles.dropdownItem} onClick={(e) => { e.stopPropagation(); handleClick('firstCandle'); }}>First Red Candle</div>
             <div className={styles.dropdownItem} onClick={(e) => { e.stopPropagation(); handleClick('rangeBreakout'); }}>Range Breakout</div>
             <div className={styles.dropdownItem} onClick={(e) => { e.stopPropagation(); handleClick('annStrategy'); }}>ANN Strategy</div>
+
+            <div className={styles.dropdownDivider}></div>
+            <div className={styles.dropdownSection}>Risk Management</div>
+            <div className={styles.dropdownItem} onClick={(e) => { e.stopPropagation(); handleClick('riskCalculator'); }}>Risk Calculator</div>
         </div>
     );
 }

@@ -44,6 +44,8 @@ export function useChartData({
     const hasMoreHistoricalDataRef = useRef(true);
     const oldestLoadedTimeRef = useRef(null);
     const abortControllerRef = useRef(null);
+    // HIGH FIX RC-2: Request ID pattern to discard stale scroll-back responses
+    const scrollBackRequestIdRef = useRef(0);
 
     // Symbol refs for closures
     const symbolRef = useRef(symbol);
@@ -62,6 +64,9 @@ export function useChartData({
         if (isReplayModeRef?.current) return;
 
         isLoadingOlderDataRef.current = true;
+
+        // HIGH FIX RC-2: Generate unique request ID to detect stale responses
+        const currentRequestId = ++scrollBackRequestIdRef.current;
 
         try {
             const oldestTime = oldestLoadedTimeRef.current;
@@ -92,10 +97,13 @@ export function useChartData({
                 endDate: formatDate(endDate)
             });
 
-            if (abortControllerRef.current) {
-                abortControllerRef.current.abort();
-            }
+            // Create new controller first, then abort old one to prevent race condition
+            const oldController = abortControllerRef.current;
             abortControllerRef.current = new AbortController();
+
+            if (oldController) {
+                oldController.abort();
+            }
 
             const olderData = await getHistoricalKlines(
                 currentSymbol,
@@ -105,6 +113,12 @@ export function useChartData({
                 formatDate(endDate),
                 abortControllerRef.current.signal
             );
+
+            // HIGH FIX RC-2: Check if this response is still valid (no newer request started)
+            if (currentRequestId !== scrollBackRequestIdRef.current) {
+                logger.debug('[ScrollBack] Discarding stale response, request', currentRequestId, 'superseded by', scrollBackRequestIdRef.current);
+                return;
+            }
 
             if (!olderData || olderData.length === 0) {
                 logger.debug('[ScrollBack] No more historical data available');
@@ -188,6 +202,9 @@ export function useChartData({
         let indicatorFrame = null;
         const abortController = new AbortController();
 
+        // MEDIUM FIX RC-8: Capture strategy config at effect start to detect changes during load
+        const effectStrategyConfig = strategyConfig;
+
         // Close existing WebSocket
         if (wsRef.current) {
             wsRef.current.close();
@@ -266,6 +283,18 @@ export function useChartData({
                         }
                     }, 50);
 
+                    // Verify symbol/exchange/interval haven't changed before setting up WebSocket
+                    // This prevents race condition where symbol changes during data load
+                    // MEDIUM FIX RC-8: Fix tautology bug - compare against captured config
+                    const symbolsMatch = effectStrategyConfig ?
+                        (effectStrategyConfig === strategyConfig) : // Strategy mode: check if config is still the same
+                        (symbolRef.current === symbol && exchangeRef.current === exchange && intervalRef.current === interval);
+
+                    if (!symbolsMatch) {
+                        console.warn('[useChartData] Symbol changed during data load, skipping WebSocket setup');
+                        return;
+                    }
+
                     // Set up WebSocket subscriptions
                     if (strategyConfig && strategyConfig.legs?.length >= 2) {
                         setupStrategyWebSockets(strategyConfig, cancelled);
@@ -292,20 +321,31 @@ export function useChartData({
                 const closePrice = Number(ticker.close);
                 if (!Number.isFinite(closePrice) || closePrice <= 0) return;
 
-                strategyLatestRef.current[legConfig.id] = closePrice;
+                // Create atomic snapshot to prevent race conditions
+                const snapshot = { ...strategyLatestRef.current };
+                snapshot[legConfig.id] = closePrice;
 
+                // Check if all legs have ticks using the snapshot
                 const allLegsHaveTicks = config.legs.every(
-                    leg => strategyLatestRef.current[leg.id] != null
+                    leg => snapshot[leg.id] != null
                 );
-                if (!allLegsHaveTicks) return;
 
+                if (!allLegsHaveTicks) {
+                    // Partial update - commit snapshot and return
+                    strategyLatestRef.current = snapshot;
+                    return;
+                }
+
+                // Calculate using the consistent snapshot
                 const combinedClose = config.legs.reduce((sum, leg) => {
-                    const price = strategyLatestRef.current[leg.id];
+                    const price = snapshot[leg.id];
                     const multiplier = leg.direction === 'buy' ? 1 : -1;
                     const qty = leg.quantity || 1;
                     return sum + (multiplier * qty * price);
                 }, 0);
 
+                // Commit the snapshot atomically
+                strategyLatestRef.current = snapshot;
                 updateCandleWithTick(combinedClose, cancelled);
             };
 
@@ -337,8 +377,12 @@ export function useChartData({
 
         // Update candle with tick data
         const updateCandleWithTick = (closePrice, cancelled, tickVolume = 0) => {
-            const currentData = dataRef.current;
-            if (!currentData || currentData.length === 0) return;
+            const originalData = dataRef.current;
+            if (!originalData || originalData.length === 0) return;
+
+            // HIGH FIX RC-3: Create snapshot to prevent mutation race with loadOlderData
+            const originalLength = originalData.length;
+            const currentData = [...originalData];
 
             const intervalSeconds = intervalToSeconds(interval);
             if (!Number.isFinite(intervalSeconds) || intervalSeconds <= 0) return;
@@ -375,7 +419,15 @@ export function useChartData({
                 currentData[lastIndex] = candle;
             }
 
-            dataRef.current = currentData;
+            // HIGH FIX RC-3: Verify no concurrent prepend before committing
+            // If loadOlderData prepended, the length will have changed
+            if (dataRef.current.length === originalLength) {
+                dataRef.current = currentData;
+            } else {
+                // Concurrent modification detected, discard this update
+                logger.debug('[WebSocket] Discarding tick update due to concurrent data modification');
+                return;
+            }
             const currentChartType = chartTypeRef.current;
             const transformedCandle = transformData([candle], currentChartType)[0];
 

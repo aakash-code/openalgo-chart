@@ -1,0 +1,16 @@
+
+Running 1 test using 1 worker
+
+App loaded successfully
+Found 1 indicator buttons
+Found 1 buttons with aria-label Indicators
+Total buttons on page: 40
+Button 0: text="", aria-label="Menu"
+Button 1: text="NIFTY", aria-label="Symbol Search"
+Button 2: text="", aria-label="Compare or Add Symbol"
+Button 3: text="", aria-label="Option Strategy Chart"
+Button 4: text="1D", aria-label="null"
+Found 7 canvas elements
+  ✓  1 [chromium] › e2e/debug.spec.js:3:1 › debug - check navigation and element finding (25.2s)
+
+  1 passed (28.8s)

@@ -178,23 +178,33 @@ const calculateTPOProfile = (data, options = {}) => {
         let vaTpos = priceLevelStats.find(p => Math.abs(p.price - pocPrice) < calculatedTickSize / 2)?.count || 0;
 
         const pocIndex = priceLevelStats.findIndex(p => Math.abs(p.price - pocPrice) < calculatedTickSize / 2);
-        let upIndex = pocIndex - 1;
-        let downIndex = pocIndex + 1;
 
-        while (vaTpos < targetTpos && (upIndex >= 0 || downIndex < priceLevelStats.length)) {
-            const upTpos = upIndex >= 0 ? priceLevelStats[upIndex].count : 0;
-            const downTpos = downIndex < priceLevelStats.length ? priceLevelStats[downIndex].count : 0;
+        // Validate pocIndex before using it for array access
+        if (pocIndex === -1) {
+            // POC not found in price levels - use fallback values
+            console.warn('[TPO] POC not found in price levels');
+            vaHighPrice = pocPrice;
+            vaLowPrice = pocPrice;
+        } else {
+            let upIndex = pocIndex - 1;
+            let downIndex = pocIndex + 1;
 
-            if (upTpos >= downTpos && upIndex >= 0) {
-                vaTpos += upTpos;
-                vaHighPrice = priceLevelStats[upIndex].price;
-                upIndex--;
-            } else if (downIndex < priceLevelStats.length) {
-                vaTpos += downTpos;
-                vaLowPrice = priceLevelStats[downIndex].price;
-                downIndex++;
-            } else {
-                break;
+            while (vaTpos < targetTpos && (upIndex >= 0 || downIndex < priceLevelStats.length)) {
+                // CRITICAL FIX BUG-2: Additional bounds validation to prevent negative index access
+                const upTpos = (upIndex >= 0 && upIndex < priceLevelStats.length) ? priceLevelStats[upIndex].count : 0;
+                const downTpos = (downIndex >= 0 && downIndex < priceLevelStats.length) ? priceLevelStats[downIndex].count : 0;
+
+                if (upTpos >= downTpos && upIndex >= 0 && upIndex < priceLevelStats.length) {
+                    vaTpos += upTpos;
+                    vaHighPrice = priceLevelStats[upIndex].price;
+                    upIndex--;
+                } else if (downIndex >= 0 && downIndex < priceLevelStats.length) {
+                    vaTpos += downTpos;
+                    vaLowPrice = priceLevelStats[downIndex].price;
+                    downIndex++;
+                } else {
+                    break;
+                }
             }
         }
 

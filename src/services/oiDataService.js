@@ -10,6 +10,8 @@ import logger from '../utils/logger';
 // Cache for current session OI data
 const oiCache = new Map();
 const CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
+// MEDIUM FIX ML-12: Add max size to prevent unbounded growth
+const MAX_OI_CACHE_SIZE = 150; // Limit to 150 symbols
 
 // localStorage keys
 const OI_HISTORY_KEY = 'oi_history';
@@ -95,6 +97,15 @@ export const fetchStockOI = async (symbol) => {
       underlyingLTP: chain.underlyingLTP,
       timestamp: Date.now(),
     };
+
+    // MEDIUM FIX ML-12: Evict oldest entry before caching new one
+    if (oiCache.size >= MAX_OI_CACHE_SIZE) {
+      const entries = Array.from(oiCache.entries())
+        .sort((a, b) => a[1].timestamp - b[1].timestamp);
+      const toRemove = entries[0];
+      oiCache.delete(toRemove[0]);
+      logger.debug('[OI] Evicted oldest cache entry:', toRemove[0]);
+    }
 
     // Store in cache
     oiCache.set(cacheKey, { data: oiData, timestamp: Date.now() });

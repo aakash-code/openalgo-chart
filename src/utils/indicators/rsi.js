@@ -38,7 +38,8 @@ export const calculateRSI = (data, period = 14) => {
   rsiData.push({ time: data[period].time, value: firstRSI });
 
   // Calculate subsequent RSI values using Wilder's smoothing
-  for (let i = period; i < gains.length; i++) {
+  // CRITICAL FIX BUG-3: Add bounds check to prevent accessing data[i+1] beyond array length
+  for (let i = period; i < gains.length && (i + 1) < data.length; i++) {
     avgGain = ((avgGain * (period - 1)) + gains[i]) / period;
     avgLoss = ((avgLoss * (period - 1)) + losses[i]) / period;
 

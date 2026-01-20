@@ -25,17 +25,42 @@ export const placeOrder = async (orderDetails) => {
         const apiKey = getApiKey();
         if (!apiKey) throw new Error('API Key not found');
 
+        // Validate and parse quantity with strict error checking
+        const quantity = parseInt(orderDetails.quantity, 10);
+        if (!Number.isInteger(quantity) || quantity <= 0) {
+            throw new Error(`Invalid quantity: ${orderDetails.quantity}. Must be a positive integer.`);
+        }
+
+        // Validate and parse price with strict error checking
+        const pricetype = orderDetails.pricetype || 'MARKET';
+        let price = 0;
+        if (pricetype === 'LIMIT' || pricetype === 'SL') {
+            price = parseFloat(orderDetails.price);
+            if (!Number.isFinite(price) || price <= 0) {
+                throw new Error(`Invalid price: ${orderDetails.price}. Must be a positive number for ${pricetype} orders.`);
+            }
+        }
+
+        // Validate and parse trigger_price with strict error checking
+        let trigger_price = 0;
+        if (pricetype === 'SL' || pricetype === 'SL-M') {
+            trigger_price = parseFloat(orderDetails.trigger_price);
+            if (!Number.isFinite(trigger_price) || trigger_price <= 0) {
+                throw new Error(`Invalid trigger_price: ${orderDetails.trigger_price}. Must be a positive number for ${pricetype} orders.`);
+            }
+        }
+
         const requestBody = {
             apikey: apiKey,
             strategy: orderDetails.strategy || 'MANUAL',
             exchange: orderDetails.exchange || 'NSE',
             symbol: orderDetails.symbol,
             action: orderDetails.action,
-            quantity: parseInt(orderDetails.quantity, 10),
+            quantity,
             product: orderDetails.product || 'MIS',
-            pricetype: orderDetails.pricetype || 'MARKET',
-            price: parseFloat(orderDetails.price || 0),
-            trigger_price: parseFloat(orderDetails.trigger_price || 0),
+            pricetype,
+            price,
+            trigger_price,
             disclosed_quantity: 0
         };
 

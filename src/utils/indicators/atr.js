@@ -41,7 +41,8 @@ export const calculateATR = (data, period = 14) => {
   atrData.push({ time: data[period].time, value: atr });
 
   // Subsequent ATR values using Wilder's smoothing
-  for (let i = period; i < trueRanges.length; i++) {
+  // MEDIUM FIX BUG-11: Add bounds check to prevent data[i+1] overflow
+  for (let i = period; i < trueRanges.length && (i + 1) < data.length; i++) {
     atr = ((atr * (period - 1)) + trueRanges[i]) / period;
     atrData.push({ time: data[i + 1].time, value: atr });
   }

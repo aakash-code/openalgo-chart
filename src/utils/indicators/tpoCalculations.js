@@ -147,8 +147,15 @@ export const getMinutesFromMidnight = (timestamp, timezone = undefined) => {
             };
             const formatter = new Intl.DateTimeFormat('en-US', options);
             const parts = formatter.formatToParts(date);
-            const hour = parseInt(parts.find(p => p.type === 'hour').value, 10);
-            const minute = parseInt(parts.find(p => p.type === 'minute').value, 10);
+            // HIGH FIX BUG-8: Add null check to prevent accessing .value on undefined
+            const hourPart = parts.find(p => p.type === 'hour');
+            const minutePart = parts.find(p => p.type === 'minute');
+            if (!hourPart || !minutePart) {
+                console.warn('Failed to parse time parts from formatter');
+                return 0;
+            }
+            const hour = parseInt(hourPart.value, 10);
+            const minute = parseInt(minutePart.value, 10);
 
             const h = hour === 24 ? 0 : hour;
             return h * 60 + minute;

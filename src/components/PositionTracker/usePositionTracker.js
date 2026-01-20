@@ -138,10 +138,13 @@ export const usePositionTracker = (symbols, isAuthenticated) => {
       }
     });
 
-    const results = await Promise.all(fetchPromises);
+    // Use Promise.allSettled for better isolation - one failure doesn't cancel all
+    const results = await Promise.allSettled(fetchPromises);
 
-    // Filter out nulls (failed fetches)
-    const validResults = results.filter(r => r !== null);
+    // Extract successful results and filter out nulls (failed fetches)
+    const validResults = results
+      .filter(r => r.status === 'fulfilled' && r.value !== null)
+      .map(r => r.value);
 
     console.log('[PositionTracker] Fetched', validResults.length, 'quotes');
 
@@ -165,15 +168,6 @@ export const usePositionTracker = (symbols, isAuthenticated) => {
 
     const key = `${ticker.symbol}-${ticker.exchange}`;
 
-    // Update or cache opening price from WebSocket (more accurate than REST)
-    if (ticker.open && ticker.open > 0) {
-      const cachedOpen = openPricesRef.current.get(key);
-      if (!cachedOpen || cachedOpen === ticker.last) {
-        // Update with actual opening price from market
-        openPricesRef.current.set(key, ticker.open);
-      }
-    }
-
     setData(prev => {
       if (!prev || prev.length === 0) return prev;
 
@@ -184,8 +178,21 @@ export const usePositionTracker = (symbols, isAuthenticated) => {
 
       if (existingIndex === -1) return prev;
 
-      // Get opening price (prefer cached, fallback to ticker.open)
-      const openPrice = openPricesRef.current.get(key) || ticker.open || ticker.last;
+      // Atomic read and update of opening price within setState
+      const currentOpen = openPricesRef.current.get(key);
+      let effectiveOpen = currentOpen || ticker.open || ticker.last;
+
+      // Update opening price atomically within setState
+      if (ticker.open && ticker.open > 0) {
+        if (!currentOpen || currentOpen === ticker.last) {
+          // Update with actual opening price from market
+          openPricesRef.current.set(key, ticker.open);
+          effectiveOpen = ticker.open;
+        }
+      }
+
+      // Calculate with consistent data
+      const openPrice = effectiveOpen;
       const ltp = ticker.last;
       const percentChange = openPrice > 0 ? ((ltp - openPrice) / openPrice) * 100 : 0;
 

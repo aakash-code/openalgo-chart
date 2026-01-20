@@ -11,6 +11,8 @@ import { loadDrawings, saveDrawings } from '../services/openalgo';
 export const useChartDrawings = (manager, symbol, exchange, interval, onDrawingsSync) => {
     // Keep track of the current manager to ensure we don't attach listeners multiple times if manager identity is stable but other deps change
     const managerRef = useRef(null);
+    // LOW FIX ML-14: Use ref instead of local variable for timeout (best practice)
+    const saveTimeoutRef = useRef(null);
 
     useEffect(() => {
         if (!manager || !symbol) return;
@@ -42,10 +44,9 @@ export const useChartDrawings = (manager, symbol, exchange, interval, onDrawings
         loadSavedDrawings();
 
         // Set up debounced auto-save for drawings
-        let saveTimeout = null;
         const autoSaveDrawings = () => {
-            if (saveTimeout) clearTimeout(saveTimeout);
-            saveTimeout = setTimeout(async () => {
+            if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+            saveTimeoutRef.current = setTimeout(async () => {
                 try {
                     if (manager.exportDrawings) {
                         const drawings = manager.exportDrawings();
@@ -75,8 +76,11 @@ export const useChartDrawings = (manager, symbol, exchange, interval, onDrawings
         manager._autoSaveDrawings = autoSaveDrawings;
 
         return () => {
-            if (saveTimeout) clearTimeout(saveTimeout);
-            // Cleanup listeners if LineToolManager supports it (it currently might not, but this is best practice)
+            if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+            // Unset the drawings changed callback to prevent memory leaks
+            if (manager && manager.setOnDrawingsChanged) {
+                manager.setOnDrawingsChanged(null);
+            }
         };
     }, [manager, symbol, exchange, interval, onDrawingsSync]);
 };
