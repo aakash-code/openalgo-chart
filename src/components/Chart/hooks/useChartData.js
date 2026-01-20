@@ -202,6 +202,9 @@ export function useChartData({
         let indicatorFrame = null;
         const abortController = new AbortController();
 
+        // MEDIUM FIX RC-8: Capture strategy config at effect start to detect changes during load
+        const effectStrategyConfig = strategyConfig;
+
         // Close existing WebSocket
         if (wsRef.current) {
             wsRef.current.close();
@@ -282,8 +285,9 @@ export function useChartData({
 
                     // Verify symbol/exchange/interval haven't changed before setting up WebSocket
                     // This prevents race condition where symbol changes during data load
-                    const symbolsMatch = strategyConfig ?
-                        strategyConfig.legs.every(leg => leg.symbol === leg.symbol) : // Strategy mode always uses leg symbols
+                    // MEDIUM FIX RC-8: Fix tautology bug - compare against captured config
+                    const symbolsMatch = effectStrategyConfig ?
+                        (effectStrategyConfig === strategyConfig) : // Strategy mode: check if config is still the same
                         (symbolRef.current === symbol && exchangeRef.current === exchange && intervalRef.current === interval);
 
                     if (!symbolsMatch) {

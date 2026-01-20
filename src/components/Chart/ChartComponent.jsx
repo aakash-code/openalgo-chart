@@ -678,9 +678,13 @@ const ChartComponent = forwardRef(({
         // Run update after delay to ensure chart is fully rendered
         const timer = setTimeout(updatePanePositions, 500);
 
+        // HIGH FIX ML-9: Track observer timeouts to ensure cleanup
+        const observerTimeouts = new Set();
+
         // Also observe for DOM changes
         const observer = new MutationObserver(() => {
-            setTimeout(updatePanePositions, 100);
+            const timeoutId = setTimeout(updatePanePositions, 100);
+            observerTimeouts.add(timeoutId);
         });
 
         observer.observe(chartContainerRef.current, {
@@ -690,12 +694,16 @@ const ChartComponent = forwardRef(({
 
         // Update on resize
         const resizeObserver = new ResizeObserver(() => {
-            setTimeout(updatePanePositions, 50);
+            const timeoutId = setTimeout(updatePanePositions, 50);
+            observerTimeouts.add(timeoutId);
         });
         resizeObserver.observe(chartContainerRef.current);
 
         return () => {
             clearTimeout(timer);
+            // HIGH FIX ML-9: Clear all observer-created timeouts
+            observerTimeouts.forEach(timeoutId => clearTimeout(timeoutId));
+            observerTimeouts.clear();
             observer.disconnect();
             resizeObserver.disconnect();
         };

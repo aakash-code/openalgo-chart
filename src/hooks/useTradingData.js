@@ -42,8 +42,10 @@ export const useTradingData = (isAuthenticated) => {
 
     // Shared fetch logic
     const fetchData = useCallback(async (source = 'auto') => {
-        if (!isAuthenticated || fetchInProgress.current) return;
+        if (!isAuthenticated) return;
 
+        // MEDIUM FIX RC-9: Atomic check-and-set to prevent concurrent fetches
+        if (fetchInProgress.current) return;
         fetchInProgress.current = true;
         try {
             console.log(`[useTradingData] Fetching data (source: ${source})`);
