@@ -1083,8 +1083,10 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
         console.log('Fetching fresh quotes for', symbolObjs.length, 'symbols');
         logger.debug('[Watchlist] Fetching fresh quotes for all', symbolObjs.length, 'symbols');
         const fetchPromises = symbolObjs.map(fetchSymbol);
-        const results = await Promise.all(fetchPromises);
-        const validResults = results.filter(r => r !== null);
+        const results = await Promise.allSettled(fetchPromises);
+        const validResults = results
+          .filter(r => r.status === 'fulfilled' && r.value !== null)
+          .map(r => r.value);
 
         console.log('=== API RESULTS ===');
         console.log('Total results:', results.length, 'Valid results:', validResults.length);
@@ -1291,8 +1293,10 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
       });
 
       const promises = addedSymbolObjs.map(fetchSymbol);
-      const results = await Promise.all(promises);
-      const validResults = results.filter(r => r !== null);
+      const results = await Promise.allSettled(promises);
+      const validResults = results
+        .filter(r => r.status === 'fulfilled' && r.value !== null)
+        .map(r => r.value);
 
       if (mounted && validResults.length > 0) {
         setWatchlistData(prev => [...prev, ...validResults]);
