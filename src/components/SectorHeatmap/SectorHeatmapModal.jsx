@@ -152,8 +152,8 @@ const SectorHeatmapModal = ({ isOpen, onClose, watchlistData, onSectorSelect, on
         value: stock.marketCap, // Size by market cap
       }));
 
-      const padding = 0; // Seamless (TradingView style)
-      const headerHeight = 24; // Slightly taller for better sector visibility
+      const padding = 1; // Minimal padding (TradingView style)
+      const headerHeight = 20; // Compact header for better density
       const stockLayout = calculateTreemapLayout(
         stockItems,
         padding,
@@ -184,7 +184,7 @@ const SectorHeatmapModal = ({ isOpen, onClose, watchlistData, onSectorSelect, on
   const renderTreemapView = () => {
     return (
       <div className={styles.treemapWrapper}>
-        <div className={styles.treemapContainer} ref={setTreemapRef}>
+        <div className={styles.treemapContainer} ref={setTreemapRef} style={{ padding: '4px' }}>
           {treemapLayout.map(sector => (
             <div
               key={sector.sector}
@@ -194,39 +194,40 @@ const SectorHeatmapModal = ({ isOpen, onClose, watchlistData, onSectorSelect, on
                 top: sector.y,
                 width: sector.width,
                 height: sector.height,
-                border: '2px solid rgba(255,255,255,0.08)',
-                boxShadow: '0 0 0 1px rgba(0,0,0,0.3) inset',
-                backgroundColor: 'rgba(0,0,0,0.2)',
+                border: '1px solid rgba(255,255,255,0.05)',
+                backgroundColor: 'rgba(0,0,0,0.15)',
               }}
               onClick={() => handleRowClick(sector.sector)}
             >
               <div
                 className={styles.treemapSectorHeader}
                 style={{
-                  backgroundColor: 'rgba(0,0,0,0.6)',
-                  borderBottom: `2px solid ${getChangeColor(sector.avgChange, true)}20`,
+                  backgroundColor: 'rgba(0,0,0,0.75)',
+                  borderBottom: `1px solid ${getChangeColor(sector.avgChange, true)}30`,
+                  height: '20px',
                 }}
               >
-                {/* Responsive Header: Hide details if sector is too narrow */}
-                {sector.width > 40 && (
+                {/* Compact Header: TradingView style */}
+                {sector.width > 35 && (
                   <span
                     className={styles.treemapSectorName}
                     style={{
-                      fontSize: Math.max(Math.min(sector.width / 8, 12), 9),
-                      fontWeight: '600',
-                      letterSpacing: '0.3px',
+                      fontSize: Math.max(Math.min(sector.width / 10, 10), 8),
+                      fontWeight: '700',
+                      letterSpacing: '0.5px',
+                      textTransform: 'uppercase',
                     }}
                   >
                     {sector.sector}
                   </span>
                 )}
-                {sector.width > 90 && (
+                {sector.width > 80 && (
                   <span
                     className={styles.treemapSectorChange}
                     style={{
                       color: getChangeColor(sector.avgChange, false),
-                      fontSize: '11px',
-                      fontWeight: '600',
+                      fontSize: '9px',
+                      fontWeight: '700',
                     }}
                   >
                     {sector.avgChange >= 0 ? '+' : ''}{sector.avgChange.toFixed(2)}%
@@ -244,8 +245,7 @@ const SectorHeatmapModal = ({ isOpen, onClose, watchlistData, onSectorSelect, on
                     width: stock.width,
                     height: stock.height,
                     backgroundColor: getChangeColor(stock.change, true),
-                    border: '1px solid rgba(0,0,0,0.15)',
-                    boxShadow: '0 0 0 1px rgba(255,255,255,0.03) inset',
+                    border: '0.5px solid rgba(0,0,0,0.2)',
                   }}
                   onClick={(e) => handleStockClick(stock, e)}
                   onMouseEnter={(e) => handleStockMouseEnter(stock, e)}
@@ -253,66 +253,51 @@ const SectorHeatmapModal = ({ isOpen, onClose, watchlistData, onSectorSelect, on
                   onMouseLeave={() => setHoveredStock(null)}
                 >
                   <div className={styles.treemapStockContent}>
-                    {/* Responsive Text Logic: TradingView-style adaptive display */}
+                    {/* TradingView-style: Show text on almost all tiles with aggressive scaling */}
 
-                    {/* 1. Symbol: Show for tiles >= 25px, scale font with tile size */}
-                    {stock.width > 25 && stock.height > 15 && (
+                    {/* 1. Symbol: Show for tiles >= 18px (TradingView shows on tiny tiles) */}
+                    {stock.width > 18 && stock.height > 12 && (
                       <span
                         className={styles.treemapSymbol}
                         style={{
-                          fontSize: Math.max(Math.min(stock.width / 5, 18), 9),
+                          fontSize: Math.max(Math.min(stock.width / 4.5, 16), 7),
                           color: getTextColor(),
-                          fontWeight: stock.width > 80 ? '600' : '500',
-                          letterSpacing: '0.2px',
-                          textShadow: '0 1px 2px rgba(0,0,0,0.4)',
+                          fontWeight: stock.width > 60 ? '700' : '600',
+                          letterSpacing: stock.width > 40 ? '0.3px' : '0',
+                          textShadow: '0 1px 2px rgba(0,0,0,0.5)',
                         }}
                       >
                         {stock.symbol}
                       </span>
                     )}
 
-                    {/* 2. Change %: Show for medium+ tiles */}
-                    {stock.width > 40 && stock.height > 30 && (
+                    {/* 2. Change %: Show for tiles >= 25px (TradingView shows % early) */}
+                    {stock.width > 25 && stock.height > 20 && (
                       <span
                         className={styles.treemapChange}
                         style={{
-                          fontSize: Math.max(Math.min(stock.width / 6.5, 15), 9),
+                          fontSize: Math.max(Math.min(stock.width / 6, 13), 7),
                           color: getTextColor(),
-                          fontWeight: '600',
-                          textShadow: '0 1px 2px rgba(0,0,0,0.4)',
+                          fontWeight: '700',
+                          textShadow: '0 1px 2px rgba(0,0,0,0.5)',
                         }}
                       >
                         {stock.change >= 0 ? '+' : ''}{stock.change.toFixed(2)}%
                       </span>
                     )}
 
-                    {/* 3. Price: Only show for large "hero" tiles */}
-                    {stock.height > 50 && stock.width > 70 && (
+                    {/* 3. Price: Only show for large tiles */}
+                    {stock.height > 45 && stock.width > 60 && (
                       <span
                         className={styles.treemapLtp}
                         style={{
-                          color: 'rgba(255,255,255,0.9)',
-                          fontSize: '11px',
+                          color: 'rgba(255,255,255,0.85)',
+                          fontSize: '10px',
                           fontWeight: '500',
                           textShadow: '0 1px 2px rgba(0,0,0,0.4)',
                         }}
                       >
                         ₹{formatPrice(stock.ltp)}
-                      </span>
-                    )}
-
-                    {/* 4. Market Cap: Show for very large tiles */}
-                    {stock.height > 70 && stock.width > 90 && (
-                      <span
-                        className={styles.treemapLtp}
-                        style={{
-                          color: 'rgba(255,255,255,0.7)',
-                          fontSize: '10px',
-                          fontWeight: '400',
-                          marginTop: '2px',
-                        }}
-                      >
-                        {formatVolume(stock.marketCap)} Cap
                       </span>
                     )}
                   </div>
