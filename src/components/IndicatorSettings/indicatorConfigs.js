@@ -312,7 +312,16 @@ export const indicatorConfigs = {
         fullName: 'Pivot Points',
         pane: 'main',
         inputs: [
-            { key: 'pivotType', label: 'Type', type: 'select', options: ['classic', 'fibonacci', 'woodie', 'camarilla'], default: 'classic' },
+            {
+                key: 'pivotType', label: 'Type', type: 'select', options: [
+                    { value: 'traditional', label: 'Traditional' },
+                    { value: 'fibonacci', label: 'Fibonacci' },
+                    { value: 'woodie', label: 'Woodie' },
+                    { value: 'classic', label: 'Classic' },
+                    { value: 'dm', label: 'DeMark' },
+                    { value: 'camarilla', label: 'Camarilla' }
+                ], default: 'traditional'
+            },
             { key: 'timeframe', label: 'Timeframe', type: 'select', options: ['daily', 'weekly', 'monthly'], default: 'daily' },
         ],
         style: [

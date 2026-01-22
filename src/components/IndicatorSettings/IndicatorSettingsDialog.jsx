@@ -325,11 +325,16 @@ const IndicatorSettingsDialog = ({
                             value={value}
                             onChange={(e) => handleChange(field.key, e.target.value)}
                         >
-                            {field.options.map(opt => (
-                                <option key={opt} value={opt}>
-                                    {opt.charAt(0).toUpperCase() + opt.slice(1)}
-                                </option>
-                            ))}
+                            {field.options.map(opt => {
+                                // Support both string options and object {value, label} options
+                                const optValue = typeof opt === 'object' ? opt.value : opt;
+                                const optLabel = typeof opt === 'object' ? opt.label : (opt.charAt(0).toUpperCase() + opt.slice(1));
+                                return (
+                                    <option key={optValue} value={optValue}>
+                                        {optLabel}
+                                    </option>
+                                );
+                            })}
                         </select>
                     </div>
                 );

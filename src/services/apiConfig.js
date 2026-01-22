@@ -66,6 +66,11 @@ export const getWebSocketUrl = () => {
         return `${protocol}://${window.location.host}/ws`;
     }
 
+    // If URL already has protocol prefix, return as-is
+    if (wsHost.startsWith('wss://') || wsHost.startsWith('ws://')) {
+        return wsHost;
+    }
+
     // For custom hosts, auto-detect protocol based on page protocol
     const isSecure = typeof window !== 'undefined' && window.location.protocol === 'https:';
     const protocol = isSecure ? 'wss' : 'ws';

@@ -121,7 +121,27 @@ const IndicatorRow = ({ indicator, onVisibilityToggle, onRemove, onSettings, onP
                 ? (typeof indicator.value === 'number'
                     ? indicator.value.toFixed(2)
                     : typeof indicator.value === 'object' && indicator.value !== null
-                        ? Object.values(indicator.value).map(v => typeof v === 'number' ? v.toFixed(2) : v).join(' / ')
+                        ? (indicator.value._pivotLabeled
+                            // Special rendering for Pivot Points with labels and colors
+                            ? (() => {
+                                const { colors, values } = indicator.value;
+                                const order = ['pivot', 'r1', 'r2', 'r3', 's1', 's2', 's3'];
+                                const labels = { pivot: 'P', r1: 'R1', r2: 'R2', r3: 'R3', s1: 'S1', s2: 'S2', s3: 'S3' };
+                                return order.map((key, idx) => {
+                                    const v = values?.[key];
+                                    const color = colors?.[key] || indicator.color;
+                                    const label = labels[key];
+                                    const valStr = typeof v === 'number' ? v.toFixed(2) : (v ?? '--');
+                                    return (
+                                        <span key={key} style={{ marginRight: idx < order.length - 1 ? '6px' : 0 }}>
+                                            <span style={{ color, fontWeight: 500 }}>{label}:</span>
+                                            <span style={{ color, marginLeft: '2px' }}>{valStr}</span>
+                                        </span>
+                                    );
+                                });
+                            })()
+                            // Default object rendering
+                            : Object.values(indicator.value).map(v => typeof v === 'number' ? v.toFixed(2) : v).join(' / '))
                         : indicator.value)
                 : '--'}
         </span>

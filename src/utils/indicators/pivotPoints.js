@@ -31,7 +31,6 @@ export function calculatePivotPoints(data, type = 'classic', timeframe = 'daily'
 
     // Group data by session (day/week/month)
     const sessions = groupBySession(data, timeframe);
-    console.log('[PivotPoints] Calculated sessions:', sessions.length, 'Type:', type, 'Timeframe:', timeframe);
 
     if (sessions.length < 2) {
         console.warn('[PivotPoints] Need at least 2 sessions (days/weeks) to calculate pivots. Found:', sessions.length);
@@ -49,9 +48,11 @@ export function calculatePivotPoints(data, type = 'classic', timeframe = 'daily'
         const low = prevSession.low;
         const close = prevSession.close;
         const open = prevSession.open;
+        // Get current session's open for Woodie formula
+        const currOpen = currentSession.open;
 
         // Calculate pivot levels based on type
-        const levels = calculateLevels(high, low, close, open, type);
+        const levels = calculateLevels(high, low, close, open, currOpen, type);
 
         // Add pivot levels for each bar in current session
         for (const bar of currentSession.bars) {
@@ -169,53 +170,94 @@ function getWeekNumber(date) {
 
 /**
  * Calculate pivot levels based on type
+ * @param {number} high - Previous session high
+ * @param {number} low - Previous session low  
+ * @param {number} close - Previous session close
+ * @param {number} open - Previous session open
+ * @param {number} currOpen - Current session open (for Woodie)
+ * @param {string} type - Pivot type
  */
-function calculateLevels(high, low, close, open, type) {
+function calculateLevels(high, low, close, open, currOpen, type) {
     let pivot, r1, r2, r3, s1, s2, s3;
+    const range = high - low;
+
 
     switch (type) {
         case 'fibonacci':
+            // TradingView: P = (H + L + C) / 3
             pivot = (high + low + close) / 3;
-            const range = high - low;
             r1 = pivot + (0.382 * range);
             r2 = pivot + (0.618 * range);
-            r3 = pivot + (1.0 * range);
+            r3 = pivot + range;
             s1 = pivot - (0.382 * range);
             s2 = pivot - (0.618 * range);
-            s3 = pivot - (1.0 * range);
+            s3 = pivot - range;
             break;
 
         case 'woodie':
-            pivot = (high + low + 2 * close) / 4;
+            // TradingView Woodie: P = (H + L + 2 * currOpen) / 4
+            // Key difference: uses CURRENT session's open, not previous close
+            pivot = (high + low + 2 * currOpen) / 4;
             r1 = (2 * pivot) - low;
-            r2 = pivot + (high - low);
-            r3 = r1 + (high - low);
+            r2 = pivot + range;
+            r3 = high + 2 * (pivot - low);
             s1 = (2 * pivot) - high;
-            s2 = pivot - (high - low);
-            s3 = s1 - (high - low);
+            s2 = pivot - range;
+            s3 = low - 2 * (high - pivot);
             break;
 
         case 'camarilla':
+            // TradingView Camarilla: P = (H + L + C) / 3
             pivot = (high + low + close) / 3;
-            const camarillaRange = high - low;
-            r1 = close + (camarillaRange * 1.1 / 12);
-            r2 = close + (camarillaRange * 1.1 / 6);
-            r3 = close + (camarillaRange * 1.1 / 4);
-            s1 = close - (camarillaRange * 1.1 / 12);
-            s2 = close - (camarillaRange * 1.1 / 6);
-            s3 = close - (camarillaRange * 1.1 / 4);
+            r1 = close + (range * 1.1 / 12);
+            r2 = close + (range * 1.1 / 6);
+            r3 = close + (range * 1.1 / 4);
+            s1 = close - (range * 1.1 / 12);
+            s2 = close - (range * 1.1 / 6);
+            s3 = close - (range * 1.1 / 4);
+            break;
+
+        case 'traditional':
+            // TradingView Traditional: Different R3/S3 formulas
+            pivot = (high + low + close) / 3;
+            r1 = (2 * pivot) - low;
+            s1 = (2 * pivot) - high;
+            r2 = pivot + range;
+            s2 = pivot - range;
+            r3 = (2 * pivot) + (high - 2 * low);  // P*2 + (H - 2*L)
+            s3 = (2 * pivot) - (2 * high - low);  // P*2 - (2*H - L)
+            break;
+
+        case 'dm':
+            // TradingView DM (Demark): Conditional X calculation
+            let x;
+            if (open === close) {
+                x = high + low + 2 * close;
+            } else if (close > open) {
+                x = 2 * high + low + close;
+            } else {
+                x = 2 * low + high + close;
+            }
+            pivot = x / 4;
+            r1 = x / 2 - low;
+            s1 = x / 2 - high;
+            // DM only has R1/S1, set others equal to pivot
+            r2 = pivot;
+            r3 = pivot;
+            s2 = pivot;
+            s3 = pivot;
             break;
 
         case 'classic':
         default:
-            // Standard/Classic Pivot Points
+            // TradingView Classic: P = (H + L + C) / 3
             pivot = (high + low + close) / 3;
             r1 = (2 * pivot) - low;
             s1 = (2 * pivot) - high;
-            r2 = pivot + (high - low);
-            s2 = pivot - (high - low);
-            r3 = high + 2 * (pivot - low);
-            s3 = low - 2 * (high - pivot);
+            r2 = pivot + range;
+            s2 = pivot - range;
+            r3 = pivot + 2 * range;
+            s3 = pivot - 2 * range;
             break;
     }
 

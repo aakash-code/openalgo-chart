@@ -399,63 +399,66 @@ export const createIchimokuSeries = (chart, ind) => {
  */
 export const createPivotPointsSeries = (chart, ind) => {
     const lineWidth = ind.lineWidth || 1;
+    const pivotColor = ind.pivotColor || '#FF9800';
+    const resistanceColor = ind.resistanceColor || '#EF5350';
+    const supportColor = ind.supportColor || '#26A69A';
 
     return {
         pivot: chart.addSeries(LineSeries, {
-            color: ind.pivotColor || '#FF9800',
+            color: pivotColor,
             lineWidth,
             lineStyle: 2,
             priceLineVisible: false,
-            lastValueVisible: false,
-            title: '' // Hide from price scale
+            lastValueVisible: true,
+            title: 'P'
         }),
         r1: chart.addSeries(LineSeries, {
-            color: ind.resistanceColor || '#EF5350',
+            color: resistanceColor,
             lineWidth,
             lineStyle: 2,
             priceLineVisible: false,
-            lastValueVisible: false,
-            title: '' // Hide from price scale
+            lastValueVisible: true,
+            title: 'R1'
         }),
         r2: chart.addSeries(LineSeries, {
-            color: ind.resistanceColor || '#EF5350',
+            color: resistanceColor,
             lineWidth,
             lineStyle: 2,
             priceLineVisible: false,
-            lastValueVisible: false,
-            title: '' // Hide from price scale
+            lastValueVisible: true,
+            title: 'R2'
         }),
         r3: chart.addSeries(LineSeries, {
-            color: ind.resistanceColor || '#EF5350',
+            color: resistanceColor,
             lineWidth,
             lineStyle: 2,
             priceLineVisible: false,
-            lastValueVisible: false,
-            title: '' // Hide from price scale
+            lastValueVisible: true,
+            title: 'R3'
         }),
         s1: chart.addSeries(LineSeries, {
-            color: ind.supportColor || '#26A69A',
+            color: supportColor,
             lineWidth,
             lineStyle: 2,
             priceLineVisible: false,
-            lastValueVisible: false,
-            title: '' // Hide from price scale
+            lastValueVisible: true,
+            title: 'S1'
         }),
         s2: chart.addSeries(LineSeries, {
-            color: ind.supportColor || '#26A69A',
+            color: supportColor,
             lineWidth,
             lineStyle: 2,
             priceLineVisible: false,
-            lastValueVisible: false,
-            title: '' // Hide from price scale
+            lastValueVisible: true,
+            title: 'S2'
         }),
         s3: chart.addSeries(LineSeries, {
-            color: ind.supportColor || '#26A69A',
+            color: supportColor,
             lineWidth,
             lineStyle: 2,
             priceLineVisible: false,
-            lastValueVisible: false,
-            title: '' // Hide from price scale
+            lastValueVisible: true,
+            title: 'S3'
         })
     };
 };

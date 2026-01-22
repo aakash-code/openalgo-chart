@@ -4627,11 +4627,48 @@ const ChartComponent = forwardRef(({
 
             if (ind.source && ind.source !== 'close') params += `${ind.source} `;
 
+            // Special handling for Pivot Points - include type in name
+            let indicatorName = config ? config.name : (ind.name || ind.type.toUpperCase());
+            if (ind.type === 'pivotPoints' && ind.pivotType) {
+                // Map pivot type values to display names
+                const pivotTypeLabels = {
+                    traditional: 'Traditional',
+                    fibonacci: 'Fibonacci',
+                    woodie: 'Woodie',
+                    classic: 'Classic',
+                    dm: 'DeMark',
+                    camarilla: 'Camarilla'
+                };
+                const pivotTypeName = pivotTypeLabels[ind.pivotType] || (ind.pivotType.charAt(0).toUpperCase() + ind.pivotType.slice(1));
+                indicatorName = `Pivot Points ${pivotTypeName}`;
+            }
+
+            // Special handling for Pivot Points values - format with labels and colors
+            let formattedValue = val;
+            let pivotColors = null;
+            if (ind.type === 'pivotPoints' && val && typeof val === 'object') {
+                pivotColors = {
+                    pivot: ind.pivotColor || '#FF9800',
+                    r1: ind.resistanceColor || '#EF5350',
+                    r2: ind.resistanceColor || '#EF5350',
+                    r3: ind.resistanceColor || '#EF5350',
+                    s1: ind.supportColor || '#26A69A',
+                    s2: ind.supportColor || '#26A69A',
+                    s3: ind.supportColor || '#26A69A'
+                };
+                // Format as labeled object for IndicatorLegend to render
+                formattedValue = {
+                    _pivotLabeled: true,
+                    colors: pivotColors,
+                    values: val
+                };
+            }
+
             return {
                 ...ind,
-                name: config ? config.name : (ind.name || ind.type.toUpperCase()),
+                name: indicatorName,
                 params: params.trim(),
-                value: val,
+                value: formattedValue,
                 color: ind.color || (config?.style?.[0]?.default) || '#2962FF',
                 isHidden: ind.visible === false,
                 pane: ind.pane || (config ? config.pane : 'main')

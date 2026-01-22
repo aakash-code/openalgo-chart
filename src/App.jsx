@@ -1554,7 +1554,12 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
     // Decide update strategy
     // Note: watchlistData.length === 0 check handles React strict mode double-invocation
     // where first effect's cleanup aborts requests before they complete
-    const needsFullReload = isInitialLoad || isListSwitch || (currentSymbolKeys.length > 0 && watchlistData.length === 0);
+    // FIX: Also trigger full reload when symbols are ADDED, because incremental add
+    // does not update WebSocket subscription (hydrateAddedSymbols only fetches REST data).
+    // Without full reload, adding a symbol causes all watchlist updates to stop.
+    const needsFullReload = isInitialLoad || isListSwitch ||
+      (currentSymbolKeys.length > 0 && watchlistData.length === 0) ||
+      addedSymbolKeys.length > 0;
 
     console.log('=== UPDATE STRATEGY ===');
     console.log('isInitialLoad:', isInitialLoad, 'isListSwitch:', isListSwitch);
@@ -1563,21 +1568,17 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
     console.log('addedSymbolKeys:', addedSymbolKeys.length, 'removedSymbolKeys:', removedSymbolKeys.length);
 
     if (needsFullReload) {
-      // Full reload for initial load, watchlist switch, or empty data
+      // Full reload for initial load, watchlist switch, empty data, or symbol additions
+      // Symbol additions need full reload because WebSocket subscription must be refreshed
       console.log('>>> Calling hydrateWatchlist()');
       hydrateWatchlist();
-    } else if (removedSymbolKeys.length > 0 || addedSymbolKeys.length > 0) {
-      // Incremental update
-      if (removedSymbolKeys.length > 0) {
-        // Parse composite keys to filter out removed items
-        setWatchlistData(prev => prev.filter(item => {
-          const itemKey = `${item.symbol}-${item.exchange || 'NSE'}`;
-          return !removedSymbolKeys.includes(itemKey);
-        }));
-      }
-      if (addedSymbolKeys.length > 0) {
-        hydrateAddedSymbols();
-      }
+    } else if (removedSymbolKeys.length > 0) {
+      // Only removals can be handled incrementally (no WebSocket change needed)
+      // Parse composite keys to filter out removed items
+      setWatchlistData(prev => prev.filter(item => {
+        const itemKey = `${item.symbol}-${item.exchange || 'NSE'}`;
+        return !removedSymbolKeys.includes(itemKey);
+      }));
     }
     // If no changes (just reorder or sections), do nothing
 

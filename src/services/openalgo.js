@@ -166,8 +166,8 @@ class SharedWebSocketManager {
         if (this._ws && this._ws.readyState === WebSocket.OPEN) return;
         if (this._ws && this._ws.readyState === WebSocket.CONNECTING) return;
 
-        const url = `ws://${localStorage.getItem('oa_ws_url') || DEFAULT_WS_HOST}`;
-        const apiKey = localStorage.getItem('oa_apikey');
+        const url = getWebSocketUrl();
+        const apiKey = getApiKey();
 
         // Validate API key before connecting
         if (!apiKey) {
