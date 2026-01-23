@@ -1,5 +1,5 @@
 
-import { IPrimitivePaneRenderer, IPrimitivePaneView, PrimitivePaneViewZOrder } from 'lightweight-charts';
+import { IPrimitivePaneRenderer, IPrimitivePaneView, PrimitivePaneViewZOrder, ISeriesApi, SeriesType } from 'lightweight-charts';
 import { VisualTradingRenderer, OrderRendererData } from './renderer';
 
 export class VisualTradingPaneView implements IPrimitivePaneView {
@@ -19,5 +19,9 @@ export class VisualTradingPaneView implements IPrimitivePaneView {
 
     update(data: OrderRendererData) {
         this._renderer.update(data);
+    }
+
+    setSeries(series: ISeriesApi<SeriesType>) {
+        this._renderer.setSeries(series);
     }
 }

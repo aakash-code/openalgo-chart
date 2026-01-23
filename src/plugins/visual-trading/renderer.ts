@@ -2,7 +2,7 @@ import {
     BitmapCoordinatesRenderingScope,
     CanvasRenderingTarget2D,
 } from 'fancy-canvas';
-import { IPrimitivePaneRenderer } from 'lightweight-charts';
+import { IPrimitivePaneRenderer, ISeriesApi, SeriesType } from 'lightweight-charts';
 import { positionsLine } from '../../helpers/dimensions/positions';
 
 // Constants from UserPriceAlerts
@@ -19,7 +19,7 @@ const crossPath = new Path2D(
 export interface OrderRendererData {
     orders: Array<{
         id: string;
-        y: number;
+        price: number;
         color: string;
         text: string;
         hovered: boolean;
@@ -28,7 +28,7 @@ export interface OrderRendererData {
         lineStyle: number[];
     }>;
     positions: Array<{
-        y: number;
+        price: number;
         color: string;
         text: string;
         lineWidth: number;
@@ -37,6 +37,11 @@ export interface OrderRendererData {
 
 export class VisualTradingRenderer implements IPrimitivePaneRenderer {
     private _data: OrderRendererData | null = null;
+    private _series: ISeriesApi<SeriesType> | null = null;
+
+    setSeries(series: ISeriesApi<SeriesType>) {
+        this._series = series;
+    }
 
     update(data: OrderRendererData) {
         this._data = data;
@@ -44,20 +49,26 @@ export class VisualTradingRenderer implements IPrimitivePaneRenderer {
 
     draw(target: CanvasRenderingTarget2D) {
         target.useBitmapCoordinateSpace(scope => {
-            if (!this._data) return;
+            if (!this._data || !this._series) return;
             const ctx = scope.context;
 
             // Draw Positions
             this._data.positions.forEach(pos => {
-                this._drawLine(ctx, scope, pos.y, pos.color, pos.lineWidth, []);
-                this._drawSimpleLabel(ctx, scope, pos.y, pos.color, pos.text);
+                const y = this._series?.priceToCoordinate(pos.price) ?? null;
+                if (y !== null) {
+                    this._drawLine(ctx, scope, y, pos.color, pos.lineWidth, []);
+                    this._drawSimpleLabel(ctx, scope, y, pos.color, pos.text);
+                }
             });
 
             // Draw Orders
             this._data.orders.forEach(order => {
-                this._drawOrderLine(ctx, scope, order.y, order.color, order.lineWidth);
-                // Always show label (TradingView style - not just on hover)
-                this._drawOrderLabel(ctx, scope, order);
+                const y = this._series?.priceToCoordinate(order.price) ?? null;
+                if (y !== null) {
+                    this._drawOrderLine(ctx, scope, y, order.color, order.lineWidth);
+                    // Always show label (TradingView style - not just on hover)
+                    this._drawOrderLabel(ctx, scope, order, y);
+                }
             });
         });
     }
@@ -119,7 +130,8 @@ export class VisualTradingRenderer implements IPrimitivePaneRenderer {
     private _drawOrderLabel(
         ctx: CanvasRenderingContext2D,
         scope: BitmapCoordinatesRenderingScope,
-        order: OrderRendererData['orders'][0]
+        order: OrderRendererData['orders'][0],
+        y: number
     ) {
         const textLength = order.text.length;
         const labelWidth = this._calculateLabelWidth(textLength);
@@ -134,7 +146,7 @@ export class VisualTradingRenderer implements IPrimitivePaneRenderer {
             labelWidth
         );
         const yDimensions = positionsLine(
-            order.y,
+            y,
             scope.verticalPixelRatio,
             centreLabelHeight
         );
@@ -211,7 +223,7 @@ export class VisualTradingRenderer implements IPrimitivePaneRenderer {
                 order.text,
                 labelXDimensions.position +
                 centreLabelInlinePadding * scope.horizontalPixelRatio,
-                order.y * scope.verticalPixelRatio
+                y * scope.verticalPixelRatio
             );
 
             // X Icon
@@ -220,7 +232,7 @@ export class VisualTradingRenderer implements IPrimitivePaneRenderer {
             ctx.translate(
                 removeButtonStartX +
                 (scope.horizontalPixelRatio * (removeButtonWidth - iconSize)) / 2,
-                (order.y - 5) * scope.verticalPixelRatio
+                (y - 5) * scope.verticalPixelRatio
             );
             const scaling =
                 (iconSize / crossViewBoxSize) * scope.horizontalPixelRatio;

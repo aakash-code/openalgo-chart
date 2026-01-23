@@ -101,7 +101,11 @@ export const useAlertHandlers = ({
 
         let originalCondition = 'crossing';
         if (target.condition) {
-            const condLower = target.condition.toLowerCase();
+            // Handle both string conditions (price alerts) and object conditions (indicator alerts)
+            const condStr = typeof target.condition === 'object'
+                ? (target.condition.type || target.condition.label || '')
+                : target.condition;
+            const condLower = condStr.toLowerCase();
             if (condLower.includes('crossing_down') || condLower.includes('crossing down')) {
                 originalCondition = 'crossing_down';
             } else if (condLower.includes('crossing_up') || condLower.includes('crossing up')) {

@@ -15,6 +15,7 @@ import styles from './ChartComponent.module.css';
  * @param {Object} props.strategyConfig - Strategy configuration (optional)
  * @param {Object} props.ohlcData - OHLC data object
  * @param {boolean} props.isToolbarVisible - Whether toolbar is visible
+ * @param {boolean} props.isLeftScaleVisible - Whether left price scale is visible
  */
 const OHLCHeader = ({
     symbol,
@@ -22,10 +23,19 @@ const OHLCHeader = ({
     interval,
     strategyConfig,
     ohlcData,
-    isToolbarVisible
+    isToolbarVisible,
+    isLeftScaleVisible
 }) => {
+    // Calculate left offset: 
+    // Toolbar width (approx 45px + 10px margin) if visible
+    // + Left Scale width (approx 70px) if visible
+    // + Base margin (10px) if toolbar hidden
+    const toolbarOffset = isToolbarVisible ? 55 : 10;
+    const scaleOffset = isLeftScaleVisible ? 70 : 0;
+    const leftPos = toolbarOffset + scaleOffset;
+
     return (
-        <div className={styles.ohlcHeader} style={{ left: isToolbarVisible ? '55px' : '10px' }}>
+        <div className={styles.ohlcHeader} style={{ left: `${leftPos}px` }}>
             <span className={styles.ohlcSymbol}>
                 {strategyConfig?.displayName || `${symbol}:${exchange}`}
             </span>

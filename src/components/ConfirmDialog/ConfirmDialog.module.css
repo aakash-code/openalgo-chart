@@ -1,0 +1,105 @@
+.overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    backdrop-filter: blur(2px);
+}
+
+.dialog {
+    background: var(--tv-color-dropdown-background, #1e222d);
+    border: 1px solid var(--tv-color-border, #2a2e39);
+    border-radius: 6px;
+    min-width: 320px;
+    max-width: 400px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    animation: slideIn 0.15s ease-out;
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: scale(0.95) translateY(-10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+.header {
+    padding: 16px 20px 12px;
+    border-bottom: 1px solid var(--tv-color-border, #2a2e39);
+}
+
+.title {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 500;
+    color: var(--tv-color-text-primary, #d1d4dc);
+}
+
+.body {
+    padding: 16px 20px;
+}
+
+.message {
+    margin: 0;
+    font-size: 14px;
+    color: var(--tv-color-text-secondary, #787b86);
+    line-height: 1.5;
+}
+
+.footer {
+    padding: 12px 20px 16px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+.cancelBtn,
+.confirmBtn {
+    padding: 8px 20px;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    border: 1px solid transparent;
+}
+
+.cancelBtn {
+    background: transparent;
+    color: var(--tv-color-text-secondary, #787b86);
+    border: 1px solid var(--tv-color-border, #2a2e39);
+}
+
+.cancelBtn:hover {
+    background: var(--tv-color-toolbar-button-background-hover, #2a2e39);
+    color: var(--tv-color-text-primary, #d1d4dc);
+}
+
+.confirmBtn {
+    background: var(--tv-color-brand, #2962ff);
+    color: #fff;
+    border: 1px solid transparent;
+}
+
+.confirmBtn:hover {
+    background: var(--tv-color-brand-hover, #1e53e5);
+}
+
+.confirmBtn.danger {
+    background: var(--tv-color-down, #f23645);
+}
+
+.confirmBtn.danger:hover {
+    filter: brightness(0.9);
+}

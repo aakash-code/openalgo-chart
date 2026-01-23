@@ -13,6 +13,7 @@ const ChartGrid = ({
     onDrawingsSync,
     onAlertTriggered,
     onReplayModeChange,
+    onOHLCDataUpdate,
     ...chartProps
 }) => {
     const getGridClass = () => {
@@ -55,6 +56,7 @@ const ChartGrid = ({
                         onDrawingsSync={onDrawingsSync}
                         onAlertTriggered={onAlertTriggered ? (evt) => onAlertTriggered(chart.id, chart.symbol, chart.exchange || 'NSE', evt) : undefined}
                         onReplayModeChange={onReplayModeChange ? (isActive) => onReplayModeChange(chart.id, isActive) : undefined}
+                        onOHLCDataUpdate={onOHLCDataUpdate}
                         {...chartProps}
                         indicators={chart.indicators}
                         comparisonSymbols={chart.comparisonSymbols}

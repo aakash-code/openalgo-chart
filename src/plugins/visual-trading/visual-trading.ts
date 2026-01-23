@@ -62,6 +62,11 @@ export class VisualTrading implements ISeriesPrimitive<Time> {
             window.addEventListener('mouseup', this._mouseUpHandler);
             window.addEventListener('mousemove', this._mouseMoveHandler);
         }
+
+        // Pass series to renderer for dynamic coordinate calculation
+        if (this._series) {
+            this._paneViews[0].setSeries(this._series);
+        }
     }
 
     detached() {
@@ -214,14 +219,12 @@ export class VisualTrading implements ISeriesPrimitive<Time> {
 
         const positions = this._options.positions.map(pos => {
             const price = parseFloat(pos.average_price);
-            const y = this._series?.priceToCoordinate(price) ?? null;
-            if (y === null) return null;
-
             const pnl = parseFloat(pos.pnl || 0);
             const color = pnl >= 0 ? '#10B981' : '#EF4444'; // Green/Red
 
+            // We pass price instead of Y coordinate to renderer
             return {
-                y: y as number,
+                price: price,
                 color,
                 text: `${pos.quantity} ${pos.symbol} @ ${price} (${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)})`,
                 lineWidth: 2
@@ -248,11 +251,8 @@ export class VisualTrading implements ISeriesPrimitive<Time> {
             // Skip if price is still invalid
             if (isNaN(price) || price <= 0) return null;
 
-            const y = this._series?.priceToCoordinate(price) ?? null;
-            if (y === null) {
-                // Price is outside visible scale, skip rendering
-                return null;
-            }
+            // We pass price instead of Y coordinate to renderer
+
 
             const isBuy = order.action === 'BUY';
             // Use different colors for SL orders - red for sell SL (stop loss exit), green for buy SL (stop loss entry)
@@ -268,7 +268,7 @@ export class VisualTrading implements ISeriesPrimitive<Time> {
 
             return {
                 id: order.orderid || order.order_id,
-                y: y as number,
+                price: price, // Use price instead of Y
                 color,
                 text: `${order.action}${orderTypeLabel} ${order.quantity} ${priceLabel}`,
                 hovered,
@@ -339,7 +339,9 @@ export class VisualTrading implements ISeriesPrimitive<Time> {
         const data = this._getRendererData(); // Now optimized with caching!
 
         for (const order of data.orders) {
-            if (Math.abs(order.y - y) < 10) {
+            // Calculate Y on the fly for hit testing (since data now has price)
+            const orderY = this._series.priceToCoordinate(order.price);
+            if (orderY !== null && Math.abs(orderY - y) < 10) {
                 foundOrder = order.id;
                 break;
             }
@@ -360,7 +362,7 @@ export class VisualTrading implements ISeriesPrimitive<Time> {
                     this._lastCrosshairX,
                     this._lastCrosshairY!,
                     width,
-                    order.y,
+                    this._series.priceToCoordinate(order.price) ?? 0,
                     order.text.length
                 );
                 this._hoveredRemove = isHoveringRemove;

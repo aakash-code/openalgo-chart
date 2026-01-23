@@ -61,18 +61,17 @@ const ModifyOrderModal = ({ isOpen, order, onClose, onModifyComplete, showToast 
         try {
             const modifyPayload = {
                 orderid: order.orderid,
-                quantity: parseInt(quantity)
+                strategy: order.strategy || 'MANUAL',
+                exchange: order.exchange || 'NSE',
+                symbol: order.symbol,
+                action: order.action,
+                product: order.product,
+                pricetype: order.pricetype,
+                quantity: parseInt(quantity),
+                disclosed_quantity: order.disclosed_quantity || 0,
+                price: parseFloat(price || 0),
+                trigger_price: parseFloat(triggerPrice || 0)
             };
-
-            // Add price for non-MARKET orders
-            if (order.pricetype !== 'MARKET') {
-                modifyPayload.price = parseFloat(price);
-            }
-
-            // Add trigger price for SL orders
-            if (order.pricetype === 'SL' || order.pricetype === 'SL-M') {
-                modifyPayload.trigger_price = parseFloat(triggerPrice);
-            }
 
             await onModifyComplete(modifyPayload);
             onClose();

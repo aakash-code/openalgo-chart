@@ -9,6 +9,14 @@
     padding: 4px 0;
     font-family: -apple-system, BlinkMacSystemFont, 'Trebuchet MS', Roboto, Ubuntu, sans-serif;
     font-size: 13px;
+    color: #d1d4dc;
+}
+
+.contextMenu.light {
+    background-color: #ffffff;
+    border: 1px solid #dfe1e5;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    color: #131722;
 }
 
 .menuItem {
@@ -18,7 +26,7 @@
     padding: 8px 12px;
     border: none;
     background: transparent;
-    color: #d1d4dc;
+    color: inherit;
     cursor: pointer;
     text-align: left;
     gap: 8px;
@@ -29,8 +37,16 @@
     background-color: #3d4351;
 }
 
+.contextMenu.light .menuItem:hover:not(.disabled) {
+    background-color: #f0f3fa;
+}
+
 .menuItem:active:not(.disabled) {
     background-color: #4c5264;
+}
+
+.contextMenu.light .menuItem:active:not(.disabled) {
+    background-color: #e0e3eb;
 }
 
 .menuItem.disabled {
@@ -57,6 +73,10 @@
     color: #d1d4dc;
 }
 
+.contextMenu.light .menuItem:hover:not(.disabled) .menuIcon {
+    color: #131722;
+}
+
 .menuItem.deleteItem:hover:not(.disabled) .menuIcon {
     color: #f23645;
 }
@@ -77,4 +97,8 @@
     height: 1px;
     background-color: #434651;
     margin: 4px 0;
+}
+
+.contextMenu.light .menuDivider {
+    background-color: #dfe1e5;
 }

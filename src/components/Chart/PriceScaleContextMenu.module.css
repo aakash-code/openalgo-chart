@@ -1,0 +1,117 @@
+.menu {
+    position: fixed;
+    background-color: #ffffff;
+    border-radius: 4px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    z-index: 10001;
+    min-width: 220px;
+    padding: 4px 0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Trebuchet MS', Roboto, Ubuntu, sans-serif;
+}
+
+.menuItem {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    padding: 8px 12px;
+    background: transparent;
+    border: none;
+    color: #131722;
+    font-size: 13px;
+    cursor: pointer;
+    text-align: left;
+    transition: background-color 0.1s ease;
+    gap: 8px;
+    position: relative;
+}
+
+.menuItem:hover {
+    background-color: #f0f3fa;
+}
+
+.menuItemCheck {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #2196F3;
+}
+
+.menuItemIcon {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #787B86;
+}
+
+.menuItemText {
+    flex: 1;
+}
+
+.hasSubmenu {
+    padding-right: 28px;
+}
+
+.hasSubmenu>svg {
+    position: absolute;
+    right: 8px;
+    color: #787B86;
+}
+
+.divider {
+    height: 1px;
+    background-color: #e0e3eb;
+    margin: 4px 0;
+}
+
+.submenu {
+    position: absolute;
+    left: 100%;
+    top: -4px;
+    background-color: #ffffff;
+    border-radius: 4px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    min-width: 200px;
+    padding: 4px 0;
+    z-index: 10002;
+}
+
+.submenu .menuItem {
+    padding: 8px 12px 8px 8px;
+}
+
+/* Dark theme support */
+:global([data-theme="dark"]) .menu {
+    background-color: #1e222d;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+:global([data-theme="dark"]) .menuItem {
+    color: #d1d4dc;
+}
+
+:global([data-theme="dark"]) .menuItem:hover {
+    background-color: #2a2e39;
+}
+
+:global([data-theme="dark"]) .divider {
+    background-color: #363a45;
+}
+
+:global([data-theme="dark"]) .submenu {
+    background-color: #1e222d;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+:global([data-theme="dark"]) .menuItemIcon {
+    color: #787B86;
+}
+
+:global([data-theme="dark"]) .hasSubmenu>svg {
+    color: #787B86;
+}

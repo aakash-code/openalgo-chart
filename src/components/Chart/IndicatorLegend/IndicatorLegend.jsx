@@ -4,9 +4,16 @@ import styles from './IndicatorLegend.module.css';
 /**
  * IndicatorRow - Renders a single indicator with name, params, value, and action buttons
  */
-const IndicatorRow = ({ indicator, onVisibilityToggle, onRemove, onSettings, onPaneMenu, isPaneIndicator }) => (
+const IndicatorRow = ({ indicator, onVisibilityToggle, onRemove, onSettings, onPaneMenu, onAddAlert, isPaneIndicator }) => (
     <div
         className={`${styles.indicatorRow} ${indicator.isHidden ? styles.indicatorHidden : ''}`}
+        onContextMenu={(e) => {
+            e.preventDefault();
+            // Right-click toggles visibility
+            if (onVisibilityToggle) {
+                onVisibilityToggle(indicator.id || indicator.type);
+            }
+        }}
     >
         {/* Name with params - like TradingView: "EMA 20 close 0" */}
         <span className={styles.indicatorName}>
@@ -25,9 +32,9 @@ const IndicatorRow = ({ indicator, onVisibilityToggle, onRemove, onSettings, onP
                 title="Pane options"
             >
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 18 18" width="18" height="18">
-                    <circle fill="currentColor" cx="9" cy="4" r="1.5"/>
-                    <circle fill="currentColor" cx="9" cy="9" r="1.5"/>
-                    <circle fill="currentColor" cx="9" cy="14" r="1.5"/>
+                    <circle fill="currentColor" cx="9" cy="4" r="1.5" />
+                    <circle fill="currentColor" cx="9" cy="9" r="1.5" />
+                    <circle fill="currentColor" cx="9" cy="14" r="1.5" />
                 </svg>
             </button>
         )}
@@ -60,6 +67,22 @@ const IndicatorRow = ({ indicator, onVisibilityToggle, onRemove, onSettings, onP
                     </svg>
                 )}
             </button>
+            {/* Add Alert */}
+            {onAddAlert && (
+                <button
+                    className={styles.indicatorActionBtn}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        const indicatorType = indicator.type || (typeof indicator.id === 'string' ? indicator.id.split('-')[0] : indicator.id);
+                        onAddAlert(indicatorType);
+                    }}
+                    title="Add Alert on Indicator"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 18 18" width="18" height="18">
+                        <path fill="currentColor" d="M3.5 9a5.5 5.5 0 1 1 11 0v4.5l1.5 1.5v.5h-14v-.5l1.5-1.5V9zm1.5 4.5h8V9a4 4 0 1 0-8 0v4.5zM9 16.5a1.5 1.5 0 0 1-1.5-1.5h3a1.5 1.5 0 0 1-1.5 1.5z" />
+                    </svg>
+                </button>
+            )}
             {/* Settings */}
             <button
                 className={styles.indicatorActionBtn}
@@ -98,7 +121,27 @@ const IndicatorRow = ({ indicator, onVisibilityToggle, onRemove, onSettings, onP
                 ? (typeof indicator.value === 'number'
                     ? indicator.value.toFixed(2)
                     : typeof indicator.value === 'object' && indicator.value !== null
-                        ? Object.values(indicator.value).map(v => typeof v === 'number' ? v.toFixed(2) : v).join(' / ')
+                        ? (indicator.value._pivotLabeled
+                            // Special rendering for Pivot Points with labels and colors
+                            ? (() => {
+                                const { colors, values } = indicator.value;
+                                const order = ['pivot', 'r1', 'r2', 'r3', 's1', 's2', 's3'];
+                                const labels = { pivot: 'P', r1: 'R1', r2: 'R2', r3: 'R3', s1: 'S1', s2: 'S2', s3: 'S3' };
+                                return order.map((key, idx) => {
+                                    const v = values?.[key];
+                                    const color = colors?.[key] || indicator.color;
+                                    const label = labels[key];
+                                    const valStr = typeof v === 'number' ? v.toFixed(2) : (v ?? '--');
+                                    return (
+                                        <span key={key} style={{ marginRight: idx < order.length - 1 ? '6px' : 0 }}>
+                                            <span style={{ color, fontWeight: 500 }}>{label}:</span>
+                                            <span style={{ color, marginLeft: '2px' }}>{valStr}</span>
+                                        </span>
+                                    );
+                                });
+                            })()
+                            // Default object rendering
+                            : Object.values(indicator.value).map(v => typeof v === 'number' ? v.toFixed(2) : v).join(' / '))
                         : indicator.value)
                 : '--'}
         </span>
@@ -127,12 +170,54 @@ const IndicatorLegend = ({
     onRemove,
     onSettings,
     onPaneMenu,
+    onAddAlert, // New prop
+    maximizedPane = null // New prop
 }) => {
     // Separate indicators into main chart and pane indicators
     const mainIndicators = indicators.filter(ind => ind.pane === 'main');
     const paneIndicators = indicators.filter(ind => ind.pane && ind.pane !== 'main');
 
+    // If a pane is maximized, we only show that specific pane's legend at the top
+    // UNLESS the maximized pane is the main chart, in which case we just show main
+    const showingMaximized = maximizedPane !== null;
+    const isMainMaximized = maximizedPane === 'main'; // Adjust if your main pane ID is different, usually it isn't 'main' but let's see. 
+    // Actually, ChartComponent usually doesn't assign an ID to main pane for maximizing purposes in the same map?
+    // Let's rely on finding the indicator that matches the maximizedPane ID.
+
+    // If a pane is maximized, finding the indicators causing it
+    const maximizedPaneIndicators = showingMaximized
+        ? indicators.filter(ind => ind.id === maximizedPane || ind.pane === maximizedPane) // Handle both indicator ID based panes and grouped panes
+        : [];
+
     const leftOffset = isToolbarVisible ? '55px' : '10px';
+
+    // RENDER LOGIC WITH MAXIMIZED PANE
+    if (showingMaximized) {
+        // If main pane is maximized, show normal main indicators.
+        // If a separate pane is maximized, show ONLY that pane's indicators at the TOP.
+        // We need to know if maximizedPane corresponds to the main chart.
+        // Usually 'main' is not passed as paneId for maximizing? 
+        // Based on usePaneMenu, maximizing index 0 is skipped or handled. index 0 is main.
+
+        return (
+            <div className={styles.indicatorLegend} style={{ left: leftOffset }}>
+                <div className={styles.indicatorSources}>
+                    {maximizedPaneIndicators.map(indicator => (
+                        <IndicatorRow
+                            key={indicator.id || indicator.type}
+                            indicator={indicator}
+                            onVisibilityToggle={onVisibilityToggle}
+                            onRemove={onRemove}
+                            onSettings={onSettings}
+                            onPaneMenu={onPaneMenu}
+                            onAddAlert={onAddAlert}
+                            isPaneIndicator={true} // It acts as pane indicator but at top
+                        />
+                    ))}
+                </div>
+            </div>
+        );
+    }
 
     return (
         <>
@@ -147,6 +232,7 @@ const IndicatorLegend = ({
                                 onVisibilityToggle={onVisibilityToggle}
                                 onRemove={onRemove}
                                 onSettings={onSettings}
+                                onAddAlert={onAddAlert}
                             />
                         ))}
                     </div>
@@ -187,6 +273,7 @@ const IndicatorLegend = ({
                                 onRemove={onRemove}
                                 onSettings={onSettings}
                                 onPaneMenu={onPaneMenu}
+                                onAddAlert={onAddAlert}
                                 isPaneIndicator={true}
                             />
                         </div>

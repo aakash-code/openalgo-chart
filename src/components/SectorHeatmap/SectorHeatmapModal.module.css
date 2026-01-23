@@ -66,6 +66,12 @@
   gap: 24px;
 }
 
+.headerRight {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
 .title {
   margin: 0;
   font-size: 18px;
@@ -112,6 +118,46 @@
   font-size: 14px;
   font-weight: 700;
   font-family: 'Roboto Mono', 'SF Mono', monospace;
+}
+
+/* Data Source Toggle */
+.dataSourceToggle {
+  display: flex;
+  gap: 4px;
+  background: var(--tv-color-toolbar-button-background-hover);
+  border-radius: 8px;
+  padding: 4px;
+}
+
+.sourceButton {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--tv-color-text-secondary);
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.sourceButton:hover {
+  color: var(--tv-color-text-primary);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.sourceButtonActive {
+  color: #ffffff;
+  background: var(--tv-color-brand);
+  box-shadow: 0 2px 8px rgba(41, 98, 255, 0.3);
+}
+
+.sourceButtonActive:hover {
+  background: #3d74ff;
 }
 
 .closeButton {
@@ -221,24 +267,19 @@
   padding: 0 8px;
   z-index: 5;
   cursor: pointer;
-  background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(4px);
-}
-
-[data-theme="light"] .treemapSectorHeader {
-  background: rgba(0, 0, 0, 0.65);
+  background: var(--tv-color-toolbar-background); /* Theme aware */
+  border-bottom: 1px solid var(--tv-color-border);
 }
 
 .treemapSectorName {
   font-size: 11px;
   font-weight: 700;
-  color: #ffffff;
+  color: var(--tv-color-text-primary); /* Theme aware */
   text-transform: uppercase;
   letter-spacing: 0.5px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
 }
 
 .treemapSectorChange {

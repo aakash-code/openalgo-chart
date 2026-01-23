@@ -8,6 +8,13 @@ import { useCallback } from 'react';
 // Comparison symbol colors
 const COMPARISON_COLORS = ['#f57f17', '#e91e63', '#9c27b0', '#673ab7', '#3f51b5'];
 
+// Scale mode constants for comparison symbols
+export const COMPARE_SCALE_MODES = {
+    SAME_PERCENT: 'samePercent',
+    NEW_PRICE_SCALE: 'newPriceScale',
+    NEW_PANE: 'newPane'
+};
+
 /**
  * Custom hook for symbol operations
  * @param {Object} params - Hook parameters
@@ -31,9 +38,10 @@ export const useSymbolHandlers = ({
 }) => {
     // Handle symbol selection based on search mode
     const handleSymbolChange = useCallback((symbolData) => {
-        // Handle both string (legacy) and object format { symbol, exchange }
+        // Handle both string (legacy) and object format { symbol, exchange, scaleMode }
         const symbol = typeof symbolData === 'string' ? symbolData : symbolData.symbol;
         const exchange = typeof symbolData === 'string' ? 'NSE' : (symbolData.exchange || 'NSE');
+        const scaleMode = symbolData?.scaleMode || COMPARE_SCALE_MODES.SAME_PERCENT;
 
         if (searchMode === 'switch') {
             setCharts(prev => prev.map(chart =>
@@ -59,13 +67,13 @@ export const useSymbolHandlers = ({
                             )
                         };
                     } else {
-                        // Add
+                        // Add with scale mode
                         const nextColor = COMPARISON_COLORS[currentComparisons.length % COMPARISON_COLORS.length];
                         return {
                             ...chart,
                             comparisonSymbols: [
                                 ...currentComparisons,
-                                { symbol: symbol, exchange: exchange, color: nextColor }
+                                { symbol: symbol, exchange: exchange, color: nextColor, scaleMode: scaleMode }
                             ]
                         };
                     }

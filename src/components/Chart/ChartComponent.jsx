@@ -46,6 +46,7 @@ import '../../plugins/line-tools/floating-toolbar.css';
 import ReplayControls from '../Replay/ReplayControls';
 import ReplaySlider from '../Replay/ReplaySlider';
 import PriceScaleMenu from './PriceScaleMenu';
+import PriceScaleContextMenu, { SCALE_MODES } from './PriceScaleContextMenu';
 import { VisualTrading } from '../../plugins/visual-trading/visual-trading';
 import RiskCalculatorPanel from '../RiskCalculatorPanel/RiskCalculatorPanel';
 import { useChartResize } from '../../hooks/useChartResize';
@@ -86,11 +87,12 @@ const ChartComponent = forwardRef(({
     magnetMode,
     isToolbarVisible = true,
     theme = 'dark',
-    comparisonSymbols = [],
+    comparisonSymbols: comparisonSymbolsProp = [],
     onAlertsSync,
     onDrawingsSync,
     onAlertTriggered,
     onReplayModeChange,
+    onOHLCDataUpdate, // Callback to share OHLC data with GlobalAlertMonitor for indicator alerts
     isDrawingsLocked = false,
     isDrawingsHidden = false,
     isTimerVisible = false,
@@ -101,8 +103,13 @@ const ChartComponent = forwardRef(({
     chartAppearance = {},
     strategyConfig = null, // { strategyType, legs: [{ id, symbol, direction, quantity }], exchange, displayName }
     onOpenOptionChain, // Callback to open option chain for current symbol
-    oiLines = null, // { maxCallOI, maxPutOI, maxPain } - OI levels to display as price lines
-    showOILines = false // Whether to show OI lines
+    oiLines = [], // OI Lines data
+    showOILines = false, // Toggle state for OI lines
+    onOpenSettings,
+    onOpenObjectTree,
+    onOpenTradingPanel, // Callback to open trading panel
+    onIndicatorMoveUp, // New prop for moving indicators
+    onOpenIndicatorAlert, // Callback to open indicator alert dialog
 }, ref) => {
     // Get authentication status
     const { isAuthenticated } = useUser();
@@ -110,13 +117,29 @@ const ChartComponent = forwardRef(({
     // Get orders and positions from OrderContext
     const { activeOrders: orders = [], activePositions: positions = [], onModifyOrder, onCancelOrder } = useOrders();
 
+    // Memoize comparisons to prevent frequent re-renders/effects
+    const comparisonSymbols = useMemo(() => comparisonSymbolsProp, [JSON.stringify(comparisonSymbolsProp)]);
+
     const chartContainerRef = useRef();
     const [isLoading, setIsLoading] = useState(true);
-    const [contextMenu, setContextMenu] = useState({ show: false, x: 0, y: 0 });
+    const [contextMenu, setContextMenu] = useState({ show: false, x: 0, y: 0, price: null });
+    const [isVerticalCursorLocked, setIsVerticalCursorLocked] = useState(false);
     const [priceScaleMenu, setPriceScaleMenu] = useState({ visible: false, x: 0, y: 0, price: null });
+    // Right-click price scale context menu state (TradingView-style)
+    const [priceScaleContextMenu, setPriceScaleContextMenu] = useState({ visible: false, x: 0, y: 0 });
+    // Price scale settings state
+    const [priceScaleSettings, setPriceScaleSettings] = useState({
+        autoScale: true,
+        scalePriceChartOnly: false,
+        invertScale: false,
+        scaleMode: SCALE_MODES.NORMAL, // 0: Normal, 1: Log, 2: Percent, 3: Indexed
+        plusButtonVisible: true
+    });
     const [indicatorSettingsOpen, setIndicatorSettingsOpen] = useState(null); // which indicator's settings are open
     const [indicatorValues, setIndicatorValues] = useState({}); // Current value under cursor for each indicator { id: value }
     const [tpoLocalSettings, setTpoLocalSettings] = useState({}); // Local TPO settings storage (workaround for broken parent callback)
+    // Comparison symbol price labels - { symbol: { price, y, color } }
+    const [comparisonPriceLabels, setComparisonPriceLabels] = useState({});
 
     const [chartInstance, setChartInstance] = useState(null);
     useChartResize(chartContainerRef, chartInstance);
@@ -125,16 +148,140 @@ const ChartComponent = forwardRef(({
     useChartDrawings(lineToolManager, symbol, exchange, interval, onDrawingsSync);
     useChartAlerts(lineToolManager, symbol, exchange);
 
+    // Store onOHLCDataUpdate in a ref so it's accessible in WebSocket callbacks
+    const onOHLCDataUpdateRef = useRef(onOHLCDataUpdate);
+    useEffect(() => {
+        onOHLCDataUpdateRef.current = onOHLCDataUpdate;
+    }, [onOHLCDataUpdate]);
+
+    // Share OHLC data with GlobalAlertMonitor for indicator alert evaluation
+    useEffect(() => {
+        if (onOHLCDataUpdate && dataRef.current && dataRef.current.length > 0 && symbol && interval) {
+            // Notify after data is loaded/updated
+            onOHLCDataUpdate(symbol, exchange, interval, dataRef.current);
+        }
+    }, [symbol, exchange, interval, onOHLCDataUpdate]);
+    // Note: dataRef is intentionally NOT in deps to avoid loops - we rely on symbol/interval changes
+
+    // Also share data periodically to keep cache fresh (every 30 seconds)
+    useEffect(() => {
+        if (!onOHLCDataUpdate || !symbol || !interval) return;
+
+        const intervalId = setInterval(() => {
+            if (dataRef.current && dataRef.current.length > 0) {
+                onOHLCDataUpdate(symbol, exchange, interval, dataRef.current);
+            }
+        }, 30000); // Every 30 seconds
+
+        return () => clearInterval(intervalId);
+    }, [symbol, exchange, interval, onOHLCDataUpdate]);
+
     // Close context menu on click outside
     // MEDIUM FIX ML-7: Remove early return to prevent event listener memory leak
     useEffect(() => {
         if (contextMenu.show) {
-            const handleClickAway = () => setContextMenu({ show: false, x: 0, y: 0 });
+            const handleClickAway = () => setContextMenu({ show: false, x: 0, y: 0, price: null });
             document.addEventListener('click', handleClickAway);
             return () => document.removeEventListener('click', handleClickAway);
         }
-        // When show is false, no listener is added, and cleanup won't be needed
     }, [contextMenu.show]);
+
+    // Handle right-click on price scale area to show scale options context menu
+    useEffect(() => {
+        if (!chartContainerRef.current) return;
+
+        const handlePriceScaleContextMenu = (e) => {
+            // Check if click is in the right price scale area (approximately rightmost 70px)
+            const container = chartContainerRef.current;
+            if (!container) return;
+
+            const rect = container.getBoundingClientRect();
+            const rightEdge = rect.right;
+            const leftEdge = rect.left;
+            const priceScaleWidth = 70; // Approximate price scale width
+
+            let clickedScaleId = null;
+
+            // Check if click is within the Right price scale area
+            if (e.clientX >= rightEdge - priceScaleWidth) {
+                clickedScaleId = 'right';
+            }
+            // Check if click is within the Left price scale area (if visible)
+            else if (e.clientX <= leftEdge + priceScaleWidth) {
+                const leftScale = chartRef.current?.priceScale('left');
+                if (leftScale && leftScale.options().visible) {
+                    clickedScaleId = 'left';
+                }
+            }
+
+            if (clickedScaleId) {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+
+                // Load current settings for the clicked scale
+                if (chartRef.current) {
+                    const options = chartRef.current.priceScale(clickedScaleId).options();
+                    setPriceScaleSettings(prev => ({
+                        ...prev,
+                        autoScale: options.autoScale,
+                        scaleMode: options.mode,
+                        invertScale: options.invertScale
+                    }));
+                }
+
+                setPriceScaleContextMenu({
+                    visible: true,
+                    x: e.clientX,
+                    y: e.clientY,
+                    priceScaleId: clickedScaleId
+                });
+            }
+
+        };
+
+        const container = chartContainerRef.current;
+        container.addEventListener('contextmenu', handlePriceScaleContextMenu);
+
+        return () => {
+            container.removeEventListener('contextmenu', handlePriceScaleContextMenu);
+        };
+    }, []);
+
+    // Handle price scale settings changes
+    const handleScaleModeChange = useCallback((mode) => {
+        setPriceScaleSettings(prev => ({ ...prev, scaleMode: mode }));
+        const scaleId = priceScaleContextMenu.priceScaleId || 'right';
+
+        if (chartRef.current) {
+            chartRef.current.priceScale(scaleId).applyOptions({
+                mode: mode,
+            });
+        }
+    }, [priceScaleContextMenu.priceScaleId]);
+
+    const handleAutoScaleChange = useCallback((value) => {
+        setPriceScaleSettings(prev => ({ ...prev, autoScale: value }));
+        const scaleId = priceScaleContextMenu.priceScaleId || 'right';
+
+        if (chartRef.current) {
+            chartRef.current.priceScale(scaleId).applyOptions({
+                autoScale: value,
+            });
+        }
+    }, [priceScaleContextMenu.priceScaleId]);
+
+    const handleInvertScaleChange = useCallback((value) => {
+        setPriceScaleSettings(prev => ({ ...prev, invertScale: value }));
+        const scaleId = priceScaleContextMenu.priceScaleId || 'right';
+
+        if (chartRef.current) {
+            chartRef.current.priceScale(scaleId).applyOptions({
+                invertScale: value,
+            });
+        }
+    }, [priceScaleContextMenu.priceScaleId]);
+
 
     const isActuallyLoadingRef = useRef(true); // Track if we're actually loading data (not just updating indicators) - start as true on mount
     const chartRef = useRef(null);
@@ -172,6 +319,7 @@ const ChartComponent = forwardRef(({
     const chartTypeRef = useRef(chartType);
     const dataRef = useRef([]);
     const comparisonSeriesRefs = useRef(new Map());
+    const comparisonPanesRef = useRef(new Map()); // Track panes for 'newPane' comparison mode
     const visualTradingRef = useRef(null);
     const [error, setError] = useState(null);
 
@@ -189,9 +337,12 @@ const ChartComponent = forwardRef(({
         canPaneMoveUp
     } = usePaneMenu({
         chartRef,
+        chartContainerRef,
         indicatorPanesMap,
-        onIndicatorRemove
+        onIndicatorRemove,
+        onIndicatorMoveUp: onIndicatorMoveUp // Extract from props
     });
+
 
     // Multi-leg strategy mode refs
     const strategyWsRefs = useRef({}); // Map: legId -> WebSocket
@@ -561,6 +712,38 @@ const ChartComponent = forwardRef(({
             if (lineToolManagerRef.current && typeof lineToolManagerRef.current.disableSessionHighlighting === 'function') {
                 lineToolManagerRef.current.disableSessionHighlighting();
             }
+        },
+        // Shortcut helper methods
+        getCrosshairPrice: () => {
+            // Return the current price as the "crosshair price" since we don't track crosshair position
+            // This is used by keyboard shortcuts for trading orders
+            if (dataRef.current && dataRef.current.length > 0) {
+                const lastData = dataRef.current[dataRef.current.length - 1];
+                return lastData.close ?? lastData.value;
+            }
+            return null;
+        },
+        addAlertAtCrosshair: () => {
+            // Add alert at current price (used by Alt+A shortcut)
+            const currentPrice = dataRef.current?.length > 0
+                ? (dataRef.current[dataRef.current.length - 1].close ?? dataRef.current[dataRef.current.length - 1].value)
+                : null;
+            if (currentPrice) {
+                const manager = lineToolManagerRef.current;
+                const userAlerts = manager && manager._userPriceAlerts;
+                if (userAlerts && typeof userAlerts.addAlertWithCondition === 'function') {
+                    userAlerts.addAlertWithCondition(currentPrice, 'crossing');
+                }
+            }
+        },
+        drawHorizontalLineAtCrosshair: () => {
+            // Draw horizontal line at current price (used by Alt+H shortcut)
+            const currentPrice = dataRef.current?.length > 0
+                ? (dataRef.current[dataRef.current.length - 1].close ?? dataRef.current[dataRef.current.length - 1].value)
+                : null;
+            if (currentPrice && lineToolManagerRef.current) {
+                lineToolManagerRef.current.createHorizontalLineAtPrice(currentPrice);
+            }
         }
     }));
 
@@ -695,7 +878,9 @@ const ChartComponent = forwardRef(({
 
         observer.observe(chartContainerRef.current, {
             childList: true,
-            subtree: true
+            subtree: true,
+            attributes: true, // Watch for style changes (height/position) on rows
+            attributeFilter: ['style', 'class', 'height']
         });
 
         // Update on resize
@@ -713,7 +898,7 @@ const ChartComponent = forwardRef(({
             observer.disconnect();
             resizeObserver.disconnect();
         };
-    }, [indicators]);
+    }, [indicators, collapsedPanes]);
 
 
 
@@ -1327,23 +1512,41 @@ const ChartComponent = forwardRef(({
         activeToolRef.current = activeTool;
     }, [activeTool]);
 
+    // Track onToolUsed to avoid stale closures in callback
+    const onToolUsedRef = useRef(onToolUsed);
+    useEffect(() => {
+        onToolUsedRef.current = onToolUsed;
+    }, [onToolUsed]);
+
     // Initialize LineToolManager when series is ready
     const initializeLineTools = (series) => {
         if (!lineToolManagerRef.current) {
             const manager = new LineToolManager();
 
-            // Wrap startTool to detect when tool is cancelled/finished
-            const originalStartTool = manager.startTool.bind(manager);
-            manager.startTool = (tool) => {
+            // Handle tool completion
+            manager.onToolCompleted = (completedToolType) => {
+                const finishedTool = activeToolRef.current;
+                const currentOnToolUsed = onToolUsedRef.current;
 
-                originalStartTool(tool);
+                // Don't trigger onToolUsed for zoom tools since they handle their own state
+                const isZoomTool = finishedTool === 'zoom_in' || finishedTool === 'zoom_out';
 
-                // If tool is None, it means we are back to cursor mode
-                // But don't trigger onToolUsed for zoom tools since they handle their own state
-                const isZoomTool = activeToolRef.current === 'zoom_in' || activeToolRef.current === 'zoom_out';
-                if ((tool === 'None' || tool === null) && activeToolRef.current !== null && activeToolRef.current !== 'cursor' && !isZoomTool) {
+                if (finishedTool && finishedTool !== 'cursor' && !isZoomTool) {
+                    if (currentOnToolUsed) currentOnToolUsed();
 
-                    if (onToolUsed) onToolUsed();
+                    // Support for Sequential Mode:
+                    // If activeTool is NOT reset by onToolUsed (i.e. we are in sequential mode),
+                    // we need to re-activate the tool on the manager because the manager self-resets to None.
+                    setTimeout(() => {
+                        // Check if activeTool is STILL same (meaning sequential mode active)
+                        // And verify manager exists
+                        if (activeToolRef.current === finishedTool && lineToolManagerRef.current) {
+                            const mappedTool = TOOL_MAP[finishedTool] || 'None';
+                            // We call startTool to restart the tool. 
+                            // This might deselect the just-drawn tool, which is expected for sequential drawing.
+                            lineToolManagerRef.current.startTool(mappedTool);
+                        }
+                    }, 0);
                 }
             };
 
@@ -1831,6 +2034,22 @@ const ChartComponent = forwardRef(({
 
         // Handle right-click - show context menu or cancel tool
         const handleContextMenu = (event) => {
+            // Check if click is in price scale area (rightmost ~70px)
+            // If so, let the specific price scale handler (bubbling phase) logic handle it
+            if (chartContainerRef.current) {
+                const rect = chartContainerRef.current.getBoundingClientRect();
+                const priceScaleWidth = 70;
+                // Ignore Right Edge
+                if (event.clientX >= rect.right - priceScaleWidth) {
+                    return;
+                }
+                // Ignore Left Edge (if visible)
+                const leftScale = chartRef.current?.priceScale('left');
+                if (leftScale && leftScale.options().visible && event.clientX <= rect.left + priceScaleWidth) {
+                    return;
+                }
+            }
+
             event.preventDefault(); // Prevent default right-click menu
             if (activeToolRef.current && activeToolRef.current !== 'cursor') {
                 if (onToolUsed) onToolUsed();
@@ -1840,8 +2059,20 @@ const ChartComponent = forwardRef(({
             // check for hovered order
             const hoveredOrderId = visualTradingRef.current ? visualTradingRef.current.getHoveredOrderId() : null;
 
+            // Calculate price at click point
+            let clickPrice = null;
+            if (mainSeriesRef.current && chartContainerRef.current) {
+                const rect = chartContainerRef.current.getBoundingClientRect();
+                const relativeY = event.clientY - rect.top;
+                try {
+                    clickPrice = mainSeriesRef.current.coordinateToPrice(relativeY);
+                } catch (e) {
+                    console.warn('Failed to convert coordinate to price', e);
+                }
+            }
+
             // Show custom context menu
-            setContextMenu({ show: true, x: event.clientX, y: event.clientY, orderId: hoveredOrderId });
+            setContextMenu({ show: true, x: event.clientX, y: event.clientY, orderId: hoveredOrderId, price: clickPrice });
         };
         const container = chartContainerRef.current;
         container.addEventListener('contextmenu', handleContextMenu, true);
@@ -2145,6 +2376,11 @@ const ChartComponent = forwardRef(({
                     setError(null); // Clear any previous errors
                     dataRef.current = data;
 
+                    // Share OHLC data with GlobalAlertMonitor
+                    if (onOHLCDataUpdateRef.current && symbol && interval) {
+                        onOHLCDataUpdateRef.current(symbol, exchange, interval, data);
+                    }
+
                     // Track the oldest loaded timestamp for scroll-back loading
                     oldestLoadedTimeRef.current = data[0].time;
 
@@ -2261,6 +2497,12 @@ const ChartComponent = forwardRef(({
                             }
 
                             dataRef.current = currentData;
+
+                            // Share updated OHLC data with GlobalAlertMonitor
+                            if (onOHLCDataUpdateRef.current && symbol && interval && currentData.length > 0) {
+                                onOHLCDataUpdateRef.current(symbol, exchange, interval, currentData);
+                            }
+
                             const currentChartType = chartTypeRef.current;
                             const transformedCandle = transformData([candle], currentChartType)[0];
 
@@ -2367,6 +2609,11 @@ const ChartComponent = forwardRef(({
                             }
 
                             dataRef.current = currentData;
+
+                            // Share updated OHLC data with GlobalAlertMonitor
+                            if (onOHLCDataUpdateRef.current && symbol && interval && currentData.length > 0) {
+                                onOHLCDataUpdateRef.current(symbol, exchange, interval, currentData);
+                            }
 
                             const currentChartType = chartTypeRef.current;
                             const transformedCandle = transformData([candle], currentChartType)[0];
@@ -3405,47 +3652,130 @@ const ChartComponent = forwardRef(({
 
 
 
-    // Handle Comparison Symbols
+    // Handle Comparison Symbols with different scale modes
     useEffect(() => {
         if (!chartRef.current) return;
 
         const abortController = new AbortController();
         let cancelled = false;
 
-        const currentSymbols = new Set(comparisonSymbols.map(s => s.symbol));
+        // Create unique keys that include scale mode and symbol
+        const currentSymbolsMap = new Map(comparisonSymbols.map(s => [
+            `${s.symbol}_${s.exchange}_${s.scaleMode || 'samePercent'}`,
+            s
+        ]));
         const activeSeries = comparisonSeriesRefs.current;
+        const activePanes = comparisonPanesRef.current;
 
-        // Remove series that are no longer in comparisonSymbols
-        activeSeries.forEach((series, sym) => {
-            if (!currentSymbols.has(sym)) {
+        // Remove series/panes that are no longer in comparisonSymbols
+        activeSeries.forEach((series, key) => {
+            if (!currentSymbolsMap.has(key)) {
                 try {
-                    chartRef.current.removeSeries(series);
+                    // Check if it was in a separate pane
+                    const pane = activePanes.get(key);
+                    if (pane) {
+                        try {
+                            const idx = chartRef.current.panes().indexOf(pane);
+                            if (idx > 0) chartRef.current.removePane(idx);
+                        } catch (e) { /* ignore */ }
+                        activePanes.delete(key);
+                    } else {
+                        chartRef.current.removeSeries(series);
+                    }
                 } catch (e) {
                     // Ignore removal errors
                 }
-                activeSeries.delete(sym);
+                activeSeries.delete(key);
             }
         });
 
+        // Check if any active series use the left scale, if not, hide it
+        const hasLeftScaleSeries = comparisonSymbols.some(s => s.scaleMode === 'newPriceScale');
+        if (!hasLeftScaleSeries && chartRef.current) {
+            chartRef.current.priceScale('left').applyOptions({ visible: false });
+        }
+
         // Add new series with cancellation support
         const loadComparisonData = async (comp) => {
-            if (activeSeries.has(comp.symbol)) return;
+            const key = `${comp.symbol}_${comp.exchange}_${comp.scaleMode || 'samePercent'}`;
+            console.log('[Comparison] Processing:', key, 'Exists:', activeSeries.has(key));
 
-            const series = chartRef.current.addSeries(LineSeries, {
-                color: comp.color,
-                lineWidth: 2,
-                priceScaleId: 'right',
-                title: comp.symbol,
-            });
-            activeSeries.set(comp.symbol, series);
+            // Check if series exists AND has data - if it exists but has no data, reload it
+            if (activeSeries.has(key)) {
+                const existingSeries = activeSeries.get(key);
+                try {
+                    const existingData = existingSeries.data();
+                    if (existingData && existingData.length > 0) {
+                        console.log('[Comparison] Series already has data:', key);
+                        return; // Already has data, skip
+                    }
+                    console.log('[Comparison] Series exists but no data, removing and recreating:', key);
+                    // Remove the empty series and recreate
+                    chartRef.current.removeSeries(existingSeries);
+                    activeSeries.delete(key);
+                } catch (e) {
+                    // Series might be invalid, recreate it
+                    console.log('[Comparison] Series check error, recreating:', key, e);
+                    try { chartRef.current.removeSeries(existingSeries); } catch (e2) { /* ignore */ }
+                    activeSeries.delete(key);
+                }
+            }
+
+            const scaleMode = comp.scaleMode || 'samePercent';
+            let series;
+            let pane;
+
+            // Determine price scale based on scale mode
+            if (scaleMode === 'newPane') {
+                // Create a new pane for this comparison
+                pane = chartRef.current.addPane({ height: 150 });
+                activePanes.set(key, pane);
+
+                series = pane.addSeries(LineSeries, {
+                    color: comp.color,
+                    lineWidth: 2,
+                    priceScaleId: 'right',
+                    title: comp.symbol,
+                });
+            } else if (scaleMode === 'newPriceScale') {
+                // Create a series on a new left price scale
+                series = chartRef.current.addSeries(LineSeries, {
+                    color: comp.color,
+                    lineWidth: 2,
+                    priceScaleId: 'left', // Use left scale for comparison
+                    title: comp.symbol,
+                });
+
+                // Configure the left price scale
+                chartRef.current.priceScale('left').applyOptions({
+                    visible: true,
+                    borderColor: '#363a45',
+                    autoScale: true,
+                });
+            } else {
+                // Same % scale (default) - use right price scale with percentage mode
+                series = chartRef.current.addSeries(LineSeries, {
+                    color: comp.color,
+                    lineWidth: 2,
+                    priceScaleId: 'right',
+                    title: comp.symbol,
+                });
+            }
+
+            activeSeries.set(key, series);
+            console.log('[Comparison] Created series for:', key, 'Color:', comp.color);
 
             try {
                 const data = await getKlines(comp.symbol, comp.exchange || 'NSE', interval, 1000, abortController.signal);
+                console.log('[Comparison] Data loaded for:', key, 'Length:', data?.length);
                 // Check if still valid before setting data
-                if (cancelled || !activeSeries.has(comp.symbol)) return;
+                if (cancelled || !activeSeries.has(key)) return;
                 if (data && data.length > 0) {
                     const transformedData = data.map(d => ({ time: d.time, value: d.close }));
                     series.setData(transformedData);
+                    console.log('[Comparison] Data set for:', key);
+                } else {
+                    console.warn('[Comparison] No data for:', key);
                 }
             } catch (err) {
                 if (err.name !== 'AbortError') {
@@ -3454,11 +3784,24 @@ const ChartComponent = forwardRef(({
             }
         };
 
+        console.log('[Comparison] Processing symbols:', comparisonSymbols.map(c => c.symbol));
         comparisonSymbols.forEach(comp => loadComparisonData(comp));
 
-        // Update Price Scale Mode
+        // Update Price Scale Mode based on comparison mode
+        // Check if any comparison uses samePercent mode
+        const hasSamePercentComparison = comparisonSymbols.some(c =>
+            (c.scaleMode || 'samePercent') === 'samePercent'
+        );
+
         // 0: Normal, 1: Log, 2: Percentage
-        const mode = comparisonSymbols.length > 0 ? 2 : (isLogScale ? 1 : 0);
+        let mode;
+        if (hasSamePercentComparison) {
+            mode = 2; // Percentage mode for Same % scale comparisons
+        } else if (isLogScale) {
+            mode = 1;
+        } else {
+            mode = 0;
+        }
 
         chartRef.current.priceScale('right').applyOptions({
             mode: mode,
@@ -3470,6 +3813,89 @@ const ChartComponent = forwardRef(({
             abortController.abort();
         };
     }, [comparisonSymbols, interval, isLogScale, isAutoScale]);
+
+    // Update comparison symbol price labels
+    useEffect(() => {
+        if (!chartRef.current || comparisonSymbols.length === 0) {
+            setComparisonPriceLabels({});
+            return;
+        }
+
+        const updateComparisonLabels = () => {
+            const container = chartContainerRef.current;
+            if (!container) return;
+
+            const containerRect = container.getBoundingClientRect();
+            const labels = {};
+
+            const activeSeries = comparisonSeriesRefs.current;
+
+            // Count symbol occurrences to handle duplicates
+            const symbolCounts = {};
+            comparisonSymbols.forEach(c => {
+                symbolCounts[c.symbol] = (symbolCounts[c.symbol] || 0) + 1;
+            });
+
+            comparisonSymbols.forEach(comp => {
+                const key = `${comp.symbol}_${comp.exchange}_${comp.scaleMode || 'samePercent'}`;
+                const series = activeSeries.get(key);
+
+                if (series) {
+                    try {
+                        const data = series.data();
+                        if (data && data.length > 0) {
+                            const lastDataPoint = data[data.length - 1];
+                            const price = lastDataPoint.value;
+
+                            // Get Y coordinate for this price
+                            const y = series.priceToCoordinate(price);
+
+                            if (y !== null && y >= 0 && y <= containerRect.height) {
+                                // If symbol appears multiple times, append exchange to differentiate
+                                const displayName = symbolCounts[comp.symbol] > 1
+                                    ? `${comp.symbol} (${comp.exchange})`
+                                    : comp.symbol;
+
+                                // Use unique key for the map to avoid overwriting duplicates
+                                labels[key] = {
+                                    price: price,
+                                    y: y,
+                                    color: comp.color,
+                                    symbol: displayName,
+                                    scaleMode: comp.scaleMode || 'samePercent'
+                                };
+                            }
+                        }
+                    } catch (e) {
+                        // Series may not be ready yet
+                    }
+                }
+            });
+
+            setComparisonPriceLabels(labels);
+        };
+
+        // Initial update
+        const timeoutId = setTimeout(updateComparisonLabels, 500);
+
+        // Subscribe to visible range changes
+        const handleVisibleRangeChange = () => {
+            updateComparisonLabels();
+        };
+
+        if (chartRef.current) {
+            chartRef.current.timeScale().subscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
+        }
+
+        return () => {
+            clearTimeout(timeoutId);
+            if (chartRef.current) {
+                try {
+                    chartRef.current.timeScale().unsubscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
+                } catch (e) { /* ignore */ }
+            }
+        };
+    }, [comparisonSymbols]);
 
     // Handle Theme and Appearance Changes
     useEffect(() => {
@@ -4201,17 +4627,59 @@ const ChartComponent = forwardRef(({
 
             if (ind.source && ind.source !== 'close') params += `${ind.source} `;
 
+            // Special handling for Pivot Points - include type in name
+            let indicatorName = config ? config.name : (ind.name || ind.type.toUpperCase());
+            if (ind.type === 'pivotPoints' && ind.pivotType) {
+                // Map pivot type values to display names
+                const pivotTypeLabels = {
+                    traditional: 'Traditional',
+                    fibonacci: 'Fibonacci',
+                    woodie: 'Woodie',
+                    classic: 'Classic',
+                    dm: 'DeMark',
+                    camarilla: 'Camarilla'
+                };
+                const pivotTypeName = pivotTypeLabels[ind.pivotType] || (ind.pivotType.charAt(0).toUpperCase() + ind.pivotType.slice(1));
+                indicatorName = `Pivot Points ${pivotTypeName}`;
+            }
+
+            // Special handling for Pivot Points values - format with labels and colors
+            let formattedValue = val;
+            let pivotColors = null;
+            if (ind.type === 'pivotPoints' && val && typeof val === 'object') {
+                pivotColors = {
+                    pivot: ind.pivotColor || '#FF9800',
+                    r1: ind.resistanceColor || '#EF5350',
+                    r2: ind.resistanceColor || '#EF5350',
+                    r3: ind.resistanceColor || '#EF5350',
+                    s1: ind.supportColor || '#26A69A',
+                    s2: ind.supportColor || '#26A69A',
+                    s3: ind.supportColor || '#26A69A'
+                };
+                // Format as labeled object for IndicatorLegend to render
+                formattedValue = {
+                    _pivotLabeled: true,
+                    colors: pivotColors,
+                    values: val
+                };
+            }
+
             return {
                 ...ind,
-                name: config ? config.name : (ind.name || ind.type.toUpperCase()),
+                name: indicatorName,
                 params: params.trim(),
-                value: val,
+                value: formattedValue,
                 color: ind.color || (config?.style?.[0]?.default) || '#2962FF',
                 isHidden: ind.visible === false,
                 pane: ind.pane || (config ? config.pane : 'main')
             };
         }).filter(Boolean);
     }, [indicators, indicatorValues]);
+
+    // Check if any comparison uses the left price scale
+    const hasLeftPriceScale = useMemo(() => {
+        return comparisonSymbols.some(c => c.scaleMode === 'newPriceScale');
+    }, [comparisonSymbols]);
 
     return (
         <div className={`${styles.chartWrapper} ${isToolbarVisible ? styles.toolbarVisible : ''}`} style={{ display: 'flex', flexDirection: 'column' }}>
@@ -4222,8 +4690,13 @@ const ChartComponent = forwardRef(({
                 style={{
                     position: 'relative',
                     touchAction: 'none',
-                    flex: '1 1 100%',
+                    flex: '1 1 auto',
                     minHeight: 200,
+                    // Adjust width and margin when toolbar is visible AND left price scale is used
+                    // This prevents the left price scale from being hidden under the drawing toolbar
+                    width: (isToolbarVisible && hasLeftPriceScale) ? 'calc(100% - 48px)' : '100%',
+                    marginLeft: (isToolbarVisible && hasLeftPriceScale) ? '48px' : '0px',
+                    transition: 'width 0.15s ease, margin-left 0.15s ease',
                 }}
             />
             {isLoading && isActuallyLoadingRef.current && <div className={styles.loadingOverlay}><div className={styles.spinner}></div><div>Loading...</div></div>}
@@ -4260,7 +4733,50 @@ const ChartComponent = forwardRef(({
                 strategyConfig={strategyConfig}
                 ohlcData={ohlcData}
                 isToolbarVisible={isToolbarVisible}
+                isLeftScaleVisible={comparisonSymbols.some(s => s.scaleMode === 'newPriceScale')}
             />
+
+            {/* Comparison Symbol Floating Price Labels */}
+            {Object.keys(comparisonPriceLabels).length > 0 && (
+                <div className={styles.comparisonPriceLabels}>
+                    {Object.entries(comparisonPriceLabels).map(([key, data]) => {
+                        // User requested to remove newPriceScale labels
+                        if (data.scaleMode === 'newPriceScale') return null;
+
+                        const isLeftScale = false; // Always right/overlay if not newPriceScale
+                        const formattedPrice = data.price?.toLocaleString('en-IN', {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2
+                        }) ?? '0.00';
+
+                        return (
+                            <div
+                                key={key}
+                                className={`${styles.comparisonPriceLabel} ${isLeftScale ? styles.comparisonPriceLabelLeft : ''}`}
+                                style={{
+                                    top: data.y,
+                                    // For left scale labels, account for toolbar
+                                    ...(isLeftScale && isToolbarVisible ? { left: '48px' } : {})
+                                }}
+                            >
+                                <span
+                                    className={styles.comparisonPriceLabelSymbol}
+                                    style={{ backgroundColor: data.color }}
+                                >
+                                    {data.symbol}
+                                </span>
+                                <span
+                                    className={styles.comparisonPriceLabelPrice}
+                                    style={{ backgroundColor: data.color }}
+                                >
+                                    {formattedPrice}
+                                </span>
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+
 
             {/* Indicator Legend - Using reusable component */}
             <IndicatorLegend
@@ -4273,6 +4789,8 @@ const ChartComponent = forwardRef(({
                 onRemove={onIndicatorRemove}
                 onSettings={(indicatorType) => setIndicatorSettingsOpen(indicatorType)}
                 onPaneMenu={handlePaneMenu}
+                maximizedPane={maximizedPane}
+                onAddAlert={onOpenIndicatorAlert}
             />
 
             {/* Pane Context Menu - TradingView style */}
@@ -4289,6 +4807,7 @@ const ChartComponent = forwardRef(({
                 onMoveUp={handleMovePaneUp}
                 onDelete={handleDeletePane}
                 onClose={closePaneMenu}
+                theme={theme}
             />
 
             {/* Per-Indicator Settings Dialog */}
@@ -4378,14 +4897,30 @@ const ChartComponent = forwardRef(({
                 y={priceScaleMenu.y}
                 price={priceScaleMenu.price}
                 symbol={symbol}
+                ltp={dataRef.current?.length > 0 ? dataRef.current[dataRef.current.length - 1]?.close : null}
                 onAddAlert={() => {
                     const manager = lineToolManagerRef.current;
                     const userAlerts = manager && manager._userPriceAlerts;
                     if (userAlerts && priceScaleMenu.price != null) {
-                        userAlerts.openEditDialog('new', {
-                            price: priceScaleMenu.price,
-                            condition: 'crossing'
-                        });
+                        userAlerts.addAlertWithCondition(priceScaleMenu.price, 'crossing');
+                    }
+                }}
+                onPlaceSellOrder={(price, orderType) => {
+                    // Open trading panel with SELL pre-filled
+                    if (onOpenTradingPanel && priceScaleMenu.price != null) {
+                        onOpenTradingPanel('SELL', priceScaleMenu.price, orderType || 'LIMIT');
+                    }
+                }}
+                onPlaceBuyOrder={(price, orderType) => {
+                    // Open trading panel with BUY pre-filled
+                    if (onOpenTradingPanel && priceScaleMenu.price != null) {
+                        onOpenTradingPanel('BUY', priceScaleMenu.price, orderType || 'LIMIT');
+                    }
+                }}
+                onAddOrder={(price) => {
+                    // Open trading panel with default settings at price
+                    if (onOpenTradingPanel && priceScaleMenu.price != null) {
+                        onOpenTradingPanel('BUY', priceScaleMenu.price, 'LIMIT', true);
                     }
                 }}
                 onDrawHorizontalLine={() => {
@@ -4400,6 +4935,34 @@ const ChartComponent = forwardRef(({
                 onClose={() => setPriceScaleMenu({ visible: false, x: 0, y: 0, price: null })}
             />
 
+            {/* Price Scale Right-Click Context Menu (TradingView-style scale options) */}
+            <PriceScaleContextMenu
+                visible={priceScaleContextMenu.visible}
+                x={priceScaleContextMenu.x}
+                y={priceScaleContextMenu.y}
+                priceScaleId={priceScaleContextMenu.priceScaleId}
+                autoScale={priceScaleSettings.autoScale}
+                scalePriceChartOnly={priceScaleSettings.scalePriceChartOnly}
+                invertScale={priceScaleSettings.invertScale}
+                scaleMode={priceScaleSettings.scaleMode}
+                plusButtonVisible={priceScaleSettings.plusButtonVisible}
+                onAutoScaleChange={handleAutoScaleChange}
+                onScalePriceChartOnlyChange={(value) =>
+                    setPriceScaleSettings(prev => ({ ...prev, scalePriceChartOnly: value }))
+                }
+                onInvertScaleChange={handleInvertScaleChange}
+                onScaleModeChange={handleScaleModeChange}
+                onPlusButtonChange={(value) =>
+                    setPriceScaleSettings(prev => ({ ...prev, plusButtonVisible: value }))
+                }
+                onMergeScales={(type) => {
+                    // TODO: Implement merge scales functionality
+                    console.log('Merge scales:', type);
+                }}
+                onOpenSettings={onOpenSettings}
+                onClose={() => setPriceScaleContextMenu({ visible: false, x: 0, y: 0 })}
+            />
+
             {/* Right-click Context Menu */}
             <ChartContextMenu
                 show={contextMenu.show}
@@ -4408,9 +4971,71 @@ const ChartComponent = forwardRef(({
                 orderId={contextMenu.orderId}
                 symbol={symbol}
                 exchange={exchange}
+                price={contextMenu.price}
+                ltp={dataRef.current?.length > 0 ? dataRef.current[dataRef.current.length - 1]?.close : null}
+                indicatorCount={indicators?.length || 0}
+                isVerticalCursorLocked={isVerticalCursorLocked}
                 onCancelOrder={onCancelOrder}
                 onOpenOptionChain={onOpenOptionChain}
-                onClose={() => setContextMenu({ show: false, x: 0, y: 0 })}
+                onResetChartView={() => {
+                    // Reset chart to default view
+                    applyDefaultCandlePosition(dataRef.current?.length || 0);
+                }}
+                onCopyPrice={(price) => {
+                    // Price is copied in the component, just a notification hook
+                    console.log('Price copied:', price);
+                }}
+                onAddAlert={(price) => {
+                    // Add alert at the clicked price
+                    if (lineToolManagerRef.current) {
+                        const userAlerts = lineToolManagerRef.current._userPriceAlerts;
+                        if (userAlerts && typeof userAlerts.addAlertWithCondition === 'function') {
+                            userAlerts.addAlertWithCondition(price, 'crossing');
+                        }
+                    }
+                }}
+                onPlaceSellOrder={(price, orderType) => {
+                    // Open trading panel with SELL pre-filled
+                    if (onOpenTradingPanel) {
+                        onOpenTradingPanel('SELL', price, orderType || 'LIMIT');
+                    }
+                }}
+                onPlaceBuyOrder={(price, orderType) => {
+                    // Open trading panel with BUY pre-filled
+                    if (onOpenTradingPanel) {
+                        onOpenTradingPanel('BUY', price, orderType || 'LIMIT');
+                    }
+                }}
+                onAddOrder={(price) => {
+                    // Open trading panel with default settings at price
+                    if (onOpenTradingPanel) {
+                        onOpenTradingPanel('BUY', price, 'LIMIT', true);
+                    }
+                }}
+                onToggleCursorLock={() => {
+                    setIsVerticalCursorLocked(prev => !prev);
+                    // TODO: Implement actual crosshair lock functionality
+                }}
+                onOpenObjectTree={() => {
+                    if (onOpenObjectTree) {
+                        onOpenObjectTree();
+                    }
+                }}
+                onRemoveIndicator={() => {
+                    // Remove ALL indicators (since menu says "Remove X indicators")
+                    if (indicators?.length > 0 && onIndicatorRemove) {
+                        // Remove each indicator
+                        indicators.forEach(indicator => {
+                            onIndicatorRemove(indicator.id);
+                        });
+                    }
+                }}
+                onOpenSettings={() => {
+                    if (onOpenSettings) {
+                        onOpenSettings();
+                    }
+                }}
+                onClose={() => setContextMenu({ show: false, x: 0, y: 0, price: null })}
             />
 
             {/* Risk Calculator Panel */}

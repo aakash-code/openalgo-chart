@@ -44,7 +44,7 @@ export { calculateANNStrategy, getLatestANNSignal } from './annStrategy';
 export { calculateHilengaMilenga, getLatestHilengaMilenga } from './hilengaMilenga';
 
 // ADX - Trend Strength
-export { calculateADX } from './adx';
+export { calculateADX } from './avg_directional_index';
 
 // Ichimoku Cloud
 export { calculateIchimoku, getCloudData } from './ichimoku';

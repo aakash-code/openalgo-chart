@@ -21,6 +21,8 @@ import html2canvas from 'html2canvas';
  * @param {string} params.currentSymbol - Current chart symbol
  * @param {Function} params.showToast - Toast notification function
  * @param {Function} params.showSnapshotToast - Snapshot toast function
+ * @param {boolean} params.isSequentialMode - If true, keep tool active after drawing
+ * @param {Function} params.setIsSequentialMode - State setter for sequential mode
  * @returns {Object} Tool handler functions
  */
 export const useToolHandlers = ({
@@ -35,7 +37,10 @@ export const useToolHandlers = ({
     setIsReplayMode,
     currentSymbol,
     showToast,
-    showSnapshotToast
+    showSnapshotToast,
+    requestConfirm,
+    isSequentialMode = false,
+    setIsSequentialMode
 }) => {
     // Toggle drawing toolbar visibility
     const toggleDrawingToolbar = useCallback(() => {
@@ -46,6 +51,11 @@ export const useToolHandlers = ({
     const handleToolChange = useCallback((tool) => {
         if (tool === 'magnet') {
             setIsMagnetMode(prev => !prev);
+        } else if (tool === 'sequential_mode') {
+            // Toggle sequential drawing mode
+            if (setIsSequentialMode) {
+                setIsSequentialMode(prev => !prev);
+            }
         } else if (tool === 'undo') {
             const activeRef = chartRefs.current[activeChartId];
             if (activeRef) {
@@ -65,13 +75,30 @@ export const useToolHandlers = ({
             }
             setActiveTool(null);
         } else if (tool === 'clear_all') {
-            const activeRef = chartRefs.current[activeChartId];
-            if (activeRef) {
-                activeRef.clearTools();
+            // Confirm before clearing all drawings
+            const clearDrawings = () => {
+                const activeRef = chartRefs.current[activeChartId];
+                if (activeRef) {
+                    activeRef.clearTools();
+                }
+                setIsDrawingsHidden(false);
+                setIsDrawingsLocked(false);
+                setActiveTool(null);
+            };
+
+            if (requestConfirm) {
+                requestConfirm({
+                    title: 'Remove Objects',
+                    message: 'Clear all drawings? This action cannot be undone.',
+                    onConfirm: clearDrawings,
+                    confirmText: 'Remove',
+                    danger: true
+                });
+            } else if (window.confirm('Clear all drawings? This action cannot be undone.')) {
+                clearDrawings();
+            } else {
+                return;
             }
-            setIsDrawingsHidden(false);
-            setIsDrawingsLocked(false);
-            setActiveTool(null);
         } else if (tool === 'lock_all') {
             setIsDrawingsLocked(prev => !prev);
             setActiveTool(tool);
@@ -86,10 +113,13 @@ export const useToolHandlers = ({
         }
     }, [chartRefs, activeChartId, setActiveTool, setIsMagnetMode, setIsDrawingsHidden, setIsDrawingsLocked, setIsTimerVisible]);
 
-    // Reset active tool after use
+    // Reset active tool after use (unless sequential mode is enabled)
     const handleToolUsed = useCallback(() => {
-        setActiveTool(null);
-    }, [setActiveTool]);
+        if (!isSequentialMode) {
+            setActiveTool(null);
+        }
+        // In sequential mode, keep the tool active so user can draw again
+    }, [setActiveTool, isSequentialMode]);
 
     // Undo wrapper
     const handleUndo = useCallback(() => {

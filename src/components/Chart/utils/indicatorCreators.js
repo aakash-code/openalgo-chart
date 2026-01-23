@@ -76,13 +76,13 @@ export const createStochasticSeries = (chart) => {
             lineWidth: 2,
             priceLineVisible: false,
             lastValueVisible: true,
-            title: '%K'
+            title: '' // Hide from price scale
         }),
         d: pane.addSeries(LineSeries, {
             lineWidth: 2,
             priceLineVisible: false,
             lastValueVisible: true,
-            title: '%D'
+            title: '' // Hide from price scale
         })
     };
     return { series, pane };
@@ -102,13 +102,13 @@ export const createMACDSeries = (chart) => {
             lineWidth: 2,
             priceLineVisible: false,
             lastValueVisible: true,
-            title: 'MACD'
+            title: '' // Hide from price scale
         }),
         signal: pane.addSeries(LineSeries, {
             lineWidth: 2,
             priceLineVisible: false,
             lastValueVisible: true,
-            title: 'Signal'
+            title: '' // Hide from price scale
         })
     };
     return { series, pane };
@@ -312,21 +312,21 @@ export const createADXSeries = (chart, ind) => {
             lineWidth: ind.lineWidth || 2,
             priceLineVisible: false,
             lastValueVisible: true,
-            title: 'ADX'
+            title: '' // Hide from price scale
         }),
         plusDI: pane.addSeries(LineSeries, {
             color: ind.plusDIColor || '#26A69A',
             lineWidth: 1,
             priceLineVisible: false,
             lastValueVisible: false,
-            title: '+DI'
+            title: '' // Hide from price scale
         }),
         minusDI: pane.addSeries(LineSeries, {
             color: ind.minusDIColor || '#EF5350',
             lineWidth: 1,
             priceLineVisible: false,
             lastValueVisible: false,
-            title: '-DI'
+            title: '' // Hide from price scale
         })
     };
 
@@ -361,35 +361,35 @@ export const createIchimokuSeries = (chart, ind) => {
             lineWidth: 1,
             priceLineVisible: false,
             lastValueVisible: false,
-            title: 'Tenkan'
+            title: '' // Hide from price scale
         }),
         kijun: chart.addSeries(LineSeries, {
             color: ind.kijunColor || '#EF5350',
             lineWidth: 1,
             priceLineVisible: false,
             lastValueVisible: false,
-            title: 'Kijun'
+            title: '' // Hide from price scale
         }),
         senkouA: chart.addSeries(LineSeries, {
             color: ind.senkouAColor || '#26A69A',
             lineWidth: 1,
             priceLineVisible: false,
             lastValueVisible: false,
-            title: 'Senkou A'
+            title: '' // Hide from price scale
         }),
         senkouB: chart.addSeries(LineSeries, {
             color: ind.senkouBColor || '#EF5350',
             lineWidth: 1,
             priceLineVisible: false,
             lastValueVisible: false,
-            title: 'Senkou B'
+            title: '' // Hide from price scale
         }),
         chikou: chart.addSeries(LineSeries, {
             color: ind.chikouColor || '#9C27B0',
             lineWidth: 1,
             priceLineVisible: false,
             lastValueVisible: false,
-            title: 'Chikou'
+            title: '' // Hide from price scale
         })
     };
 };
@@ -399,63 +399,66 @@ export const createIchimokuSeries = (chart, ind) => {
  */
 export const createPivotPointsSeries = (chart, ind) => {
     const lineWidth = ind.lineWidth || 1;
+    const pivotColor = ind.pivotColor || '#FF9800';
+    const resistanceColor = ind.resistanceColor || '#EF5350';
+    const supportColor = ind.supportColor || '#26A69A';
 
     return {
         pivot: chart.addSeries(LineSeries, {
-            color: ind.pivotColor || '#FF9800',
+            color: pivotColor,
             lineWidth,
             lineStyle: 2,
             priceLineVisible: false,
-            lastValueVisible: false,
-            title: 'PP'
+            lastValueVisible: true,
+            title: ind.showTitle !== false ? 'P' : ''
         }),
         r1: chart.addSeries(LineSeries, {
-            color: ind.resistanceColor || '#EF5350',
+            color: resistanceColor,
             lineWidth,
             lineStyle: 2,
             priceLineVisible: false,
-            lastValueVisible: false,
-            title: 'R1'
+            lastValueVisible: true,
+            title: ind.showTitle !== false ? 'R1' : ''
         }),
         r2: chart.addSeries(LineSeries, {
-            color: ind.resistanceColor || '#EF5350',
+            color: resistanceColor,
             lineWidth,
             lineStyle: 2,
             priceLineVisible: false,
-            lastValueVisible: false,
-            title: 'R2'
+            lastValueVisible: true,
+            title: ind.showTitle !== false ? 'R2' : ''
         }),
         r3: chart.addSeries(LineSeries, {
-            color: ind.resistanceColor || '#EF5350',
+            color: resistanceColor,
             lineWidth,
             lineStyle: 2,
             priceLineVisible: false,
-            lastValueVisible: false,
-            title: 'R3'
+            lastValueVisible: true,
+            title: ind.showTitle !== false ? 'R3' : ''
         }),
         s1: chart.addSeries(LineSeries, {
-            color: ind.supportColor || '#26A69A',
+            color: supportColor,
             lineWidth,
             lineStyle: 2,
             priceLineVisible: false,
-            lastValueVisible: false,
-            title: 'S1'
+            lastValueVisible: true,
+            title: ind.showTitle !== false ? 'S1' : ''
         }),
         s2: chart.addSeries(LineSeries, {
-            color: ind.supportColor || '#26A69A',
+            color: supportColor,
             lineWidth,
             lineStyle: 2,
             priceLineVisible: false,
-            lastValueVisible: false,
-            title: 'S2'
+            lastValueVisible: true,
+            title: ind.showTitle !== false ? 'S2' : ''
         }),
         s3: chart.addSeries(LineSeries, {
-            color: ind.supportColor || '#26A69A',
+            color: supportColor,
             lineWidth,
             lineStyle: 2,
             priceLineVisible: false,
-            lastValueVisible: false,
-            title: 'S3'
+            lastValueVisible: true,
+            title: ind.showTitle !== false ? 'S3' : ''
         })
     };
 };

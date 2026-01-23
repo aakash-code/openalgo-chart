@@ -54,6 +54,7 @@ interface DragState {
 }
 
 export class LineToolManager extends PluginBase {
+    public onToolCompleted: ((tool?: string) => void) | null = null;
     private _activeToolType: ToolType = 'None';
     private _activeTool: TrendLine | HorizontalLine | VerticalLine | Rectangle | Text | ParallelChannel | FibRetracement | Triangle | Polyline | Callout | CrossLine | Circle | Path | PriceRange | LongPosition | ShortPosition | ElliottImpulseWave | ElliottCorrectionWave | DateRange | FibExtension | HorizontalRay | PriceLabel | DatePriceRange | Measure | HeadAndShoulders | null = null;
     private _points: LogicalPoint[] = [];
@@ -112,6 +113,9 @@ export class LineToolManager extends PluginBase {
 
     // Current symbol name for alerts
     private _symbolName: string = '';
+
+    // Track shift key for 45-degree angle snapping
+    private _shiftPressed: boolean = false;
 
     private _setNoneButtonActive(): void {
         document.querySelectorAll('button').forEach(b => b.classList.remove('active'));
@@ -1027,6 +1031,10 @@ export class LineToolManager extends PluginBase {
                 return new Callout(this.chart, this.series, p(0), p(1), state.options?.text || 'Callout', opts);
             case 'Path':
                 return new Path(this.chart, this.series, points, opts);
+            case 'Brush':
+                return new Polyline(this.chart, this.series, points, { ...PolylinePresets.brush, ...opts });
+            case 'Highlighter':
+                return new Polyline(this.chart, this.series, points, { ...PolylinePresets.highlighter, ...opts });
             case 'PriceRange':
                 return new PriceRange(this.chart, this.series, p(0), p(1), opts);
             case 'LongPosition':
@@ -1176,10 +1184,69 @@ export class LineToolManager extends PluginBase {
             if (logical === null || price === null) return;
 
             if (this._dragState.type === 'anchor') {
+                let targetPrice = price;
+                let targetLogical = logical;
+
+                // --- SHIFT SNAP for 45-degree angles ---
+                if (this._shiftPressed &&
+                    this._dragState.tool &&
+                    (this._dragState.tool.toolType === 'TrendLine' ||
+                        this._dragState.tool.toolType === 'Ray' ||
+                        this._dragState.tool.toolType === 'ExtendedLine' ||
+                        this._dragState.tool.toolType === 'Arrow')) {
+
+                    const tool = this._dragState.tool as any;
+                    // Support both _points (poly) and _p1/_p2 (legacy/simple)
+                    const points = tool._points || (tool._p1 && tool._p2 ? [tool._p1, tool._p2] : null);
+
+                    if (points && points.length === 2 && typeof this._dragState.anchorIndex === 'number') {
+                        const otherIndex = 1 - this._dragState.anchorIndex;
+                        const otherPoint = points[otherIndex];
+
+                        if (otherPoint) {
+                            // Convert both to screen coordinates to calculate angle visually
+                            const currentX = timeScale.logicalToCoordinate(logical);
+                            const currentY = series.priceToCoordinate(price);
+
+                            const startX = timeScale.logicalToCoordinate(otherPoint.logical);
+                            const startY = series.priceToCoordinate(otherPoint.price);
+
+                            if (currentX !== null && currentY !== null && startX !== null && startY !== null) {
+                                const dx = currentX - startX;
+                                const dy = currentY - startY; // Screen Y increases downwards
+                                const angleRad = Math.atan2(dy, dx);
+                                let angleDeg = angleRad * (180 / Math.PI);
+
+                                // Snap to nearest 45 degrees
+                                const snappedAngleDeg = Math.round(angleDeg / 45) * 45;
+                                const snappedAngleRad = snappedAngleDeg * (Math.PI / 180);
+
+                                // Calculate new screen position based on radius and snapped angle
+                                const radius = Math.sqrt(dx * dx + dy * dy);
+                                const newDx = radius * Math.cos(snappedAngleRad);
+                                const newDy = radius * Math.sin(snappedAngleRad);
+
+                                const newScreenX = startX + newDx;
+                                const newScreenY = startY + newDy;
+
+                                // Convert back to logical/price
+                                const snappedLogical = timeScale.coordinateToLogical(newScreenX);
+                                const snappedPrice = series.coordinateToPrice(newScreenY);
+
+                                if (snappedLogical !== null && snappedPrice !== null) {
+                                    targetLogical = snappedLogical;
+                                    targetPrice = snappedPrice;
+                                }
+                            }
+                        }
+                    }
+                }
+                // --- End SHIFT SNAP ---
+
                 // Update specific anchor point
                 this._dragState.tool.updatePointByIndex(
                     this._dragState.anchorIndex,
-                    { logical, price }
+                    { logical: targetLogical, price: targetPrice }
                 );
             } else {
                 // Move entire shape
@@ -1389,6 +1456,8 @@ export class LineToolManager extends PluginBase {
                     // Reset for immediate drag capability
                     this._activeToolType = 'None';
                     this._setChartInteraction(true);
+
+                    this.onToolCompleted?.();
                 }
             }
         } else if (this._activeToolType === 'HorizontalRay') {
@@ -1416,6 +1485,8 @@ export class LineToolManager extends PluginBase {
             // Reset for immediate drag capability
             this._activeToolType = 'None';
             this._setChartInteraction(true);
+
+            this.onToolCompleted?.();
         } else if (this._activeToolType === 'HorizontalLine') {
             // Finalize the horizontal line
             if (this._activeTool instanceof HorizontalLine) {
@@ -1436,6 +1507,8 @@ export class LineToolManager extends PluginBase {
             // Reset for immediate drag capability
             this._activeToolType = 'None';
             this._setChartInteraction(true);
+
+            this.onToolCompleted?.();
         } else if (this._activeToolType === 'VerticalLine') {
             // Finalize the vertical line
             if (this._activeTool instanceof VerticalLine) {
@@ -1456,6 +1529,8 @@ export class LineToolManager extends PluginBase {
             // Reset for immediate drag capability
             this._activeToolType = 'None';
             this._setChartInteraction(true);
+
+            this.onToolCompleted?.();
         } else if (this._activeToolType === 'Text') {
             const tool = new Text(this.chart, this.series, point, 'Add text', this.getToolOptions(this._activeToolType));
             this.series.attachPrimitive(tool);
@@ -1469,6 +1544,8 @@ export class LineToolManager extends PluginBase {
             // Reset for immediate drag capability
             this._activeToolType = 'None';
             this._setChartInteraction(true);
+
+            this.onToolCompleted?.();
         } else if (this._activeToolType === 'Callout') {
             if (this._points.length === 1) {
                 // First click - create callout with anchor point
@@ -1492,6 +1569,8 @@ export class LineToolManager extends PluginBase {
                     // Reset for immediate drag capability
                     this._activeToolType = 'None';
                     this._setChartInteraction(true);
+
+                    this.onToolCompleted?.();
                 }
             }
         } else if (this._activeToolType === 'PriceLabel') {
@@ -1505,6 +1584,8 @@ export class LineToolManager extends PluginBase {
             // Reset for immediate drag capability
             this._activeToolType = 'None';
             this._setChartInteraction(true);
+
+            this.onToolCompleted?.();
         } else if (this._activeToolType === 'ParallelChannel') {
             if (this._points.length === 1) {
                 const p1 = this._points[0] as LogicalPoint;
@@ -1530,6 +1611,8 @@ export class LineToolManager extends PluginBase {
                     // Reset for immediate drag capability
                     this._activeToolType = 'None';
                     this._setChartInteraction(true);
+
+                    this.onToolCompleted?.();
                 }
             }
         } else if (this._activeToolType === 'FibRetracement') {
@@ -1550,6 +1633,8 @@ export class LineToolManager extends PluginBase {
                     // Reset for immediate drag capability
                     this._activeToolType = 'None';
                     this._setChartInteraction(true);
+
+                    this.onToolCompleted?.();
                 }
             }
         } else if (this._activeToolType === 'Triangle') {
@@ -1577,6 +1662,8 @@ export class LineToolManager extends PluginBase {
                     // Reset for immediate drag capability
                     this._activeToolType = 'None';
                     this._setChartInteraction(true);
+
+                    this.onToolCompleted?.();
                 }
             }
         } else if (this._activeToolType === 'LongPosition') {
@@ -1610,6 +1697,8 @@ export class LineToolManager extends PluginBase {
                     // Reset for immediate drag capability
                     this._activeToolType = 'None';
                     this._setChartInteraction(true);
+
+                    this.onToolCompleted?.();
                 }
             }
         } else if (this._activeToolType === 'ShortPosition') {
@@ -1648,6 +1737,8 @@ export class LineToolManager extends PluginBase {
                     // Reset for immediate drag capability
                     this._activeToolType = 'None';
                     this._setChartInteraction(true);
+
+                    this.onToolCompleted?.();
                 }
             }
         } else if (this._activeToolType === 'CrossLine') {
@@ -1660,6 +1751,8 @@ export class LineToolManager extends PluginBase {
             // Reset for immediate drag capability
             this._activeToolType = 'None';
             this._setChartInteraction(true);
+
+            this.onToolCompleted?.();
 
         } else if (this._activeToolType === 'Rectangle') {
             // Store LogicalPoints for Rectangle
@@ -1684,6 +1777,8 @@ export class LineToolManager extends PluginBase {
                     // Reset for immediate drag capability
                     this._activeToolType = 'None';
                     this._setChartInteraction(true);
+
+                    this.onToolCompleted?.();
                 }
             }
         } else if (this._activeToolType === 'PriceRange') {
@@ -1709,6 +1804,8 @@ export class LineToolManager extends PluginBase {
                     // Reset for immediate drag capability
                     this._activeToolType = 'None';
                     this._setChartInteraction(true);
+
+                    this.onToolCompleted?.();
                 }
             }
         } else if (this._activeToolType === 'Circle') {
@@ -1734,6 +1831,8 @@ export class LineToolManager extends PluginBase {
                     // Reset for immediate drag capability
                     this._activeToolType = 'None';
                     this._setChartInteraction(true);
+
+                    this.onToolCompleted?.();
                 }
             }
         } else if (this._activeToolType === 'ElliottImpulseWave') {
@@ -1753,6 +1852,8 @@ export class LineToolManager extends PluginBase {
                         // Reset for immediate drag capability
                         this._activeToolType = 'None';
                         this._setChartInteraction(true);
+
+                        this.onToolCompleted?.();
                     }
                 }
             }
@@ -1773,6 +1874,8 @@ export class LineToolManager extends PluginBase {
                         // Reset for immediate drag capability
                         this._activeToolType = 'None';
                         this._setChartInteraction(true);
+
+                        this.onToolCompleted?.();
                     }
                 }
             }
@@ -1793,6 +1896,8 @@ export class LineToolManager extends PluginBase {
                         // Reset for immediate drag capability
                         this._activeToolType = 'None';
                         this._setChartInteraction(true);
+
+                        this.onToolCompleted?.();
                     }
                 }
             }
@@ -1819,6 +1924,8 @@ export class LineToolManager extends PluginBase {
                     // Reset for immediate drag capability
                     this._activeToolType = 'None';
                     this._setChartInteraction(true);
+
+                    this.onToolCompleted?.();
                 }
             }
         } else if (this._activeToolType === 'DatePriceRange') {
@@ -1844,6 +1951,8 @@ export class LineToolManager extends PluginBase {
                     // Reset for immediate drag capability
                     this._activeToolType = 'None';
                     this._setChartInteraction(true);
+
+                    this.onToolCompleted?.();
                 }
             }
         } else if (this._activeToolType === 'Measure') {
@@ -1894,6 +2003,8 @@ export class LineToolManager extends PluginBase {
                     // Reset for immediate drag capability
                     this._activeToolType = 'None';
                     this._setChartInteraction(true);
+
+                    this.onToolCompleted?.();
                 }
             }
         } else if (this._activeToolType === 'Path') {
@@ -1925,6 +2036,8 @@ export class LineToolManager extends PluginBase {
                     // Reset for immediate drag capability
                     this._activeToolType = 'None';
                     this._setChartInteraction(true);
+
+                    this.onToolCompleted?.();
                     return;
                 }
             }
@@ -2020,6 +2133,42 @@ export class LineToolManager extends PluginBase {
             if (logical !== null) {
                 let logicalPoint: LogicalPoint = { logical, price };
                 const p1 = this._points[0] as LogicalPoint;
+
+                // --- 45-Degree Snap Logic ---
+                if (this._shiftPressed) {
+                    const p1X = timeScale.logicalToCoordinate(p1.logical as Logical);
+                    const p1Y = this.series.priceToCoordinate(p1.price);
+
+                    if (p1X !== null && p1Y !== null) {
+                        const dx = x - p1X;
+                        // Use original Y from mouse for angle calculation
+                        const dy = param.point.y - p1Y;
+
+                        // Calculate angle in radians
+                        const angle = Math.atan2(dy, dx);
+
+                        // Snap to nearest 45 degrees (PI/4)
+                        const snapRad = Math.PI / 4;
+                        const snappedAngle = Math.round(angle / snapRad) * snapRad;
+
+                        // Project current distance onto snapped angle
+                        const distance = Math.sqrt(dx * dx + dy * dy);
+                        const newDx = distance * Math.cos(snappedAngle);
+                        const newDy = distance * Math.sin(snappedAngle);
+
+                        // Convert back to logical/price
+                        const newScreenX = p1X + newDx;
+                        const newScreenY = p1Y + newDy;
+
+                        const newLogical = timeScale.coordinateToLogical(newScreenX);
+                        const newPrice = this.series.coordinateToPrice(newScreenY);
+
+                        if (newLogical !== null && newPrice !== null) {
+                            logicalPoint = { logical: newLogical as Logical, price: newPrice as any };
+                        }
+                    }
+                }
+                // -----------------------------
 
                 this._activeTool.updatePoints(p1, logicalPoint);
                 this.chart.timeScale().applyOptions({});
@@ -2318,14 +2467,29 @@ export class LineToolManager extends PluginBase {
         // Left-click release stops drawing
         if (event.button === 0 && this._isDrawing) {
             event.preventDefault();
-            event.stopPropagation();
+            // Do NOT stop propagation. The chart (or window) needs to see the mouseup 
+            // to reset its own drag state, otherwise it might get stuck in a dragging mode.
+            // event.stopPropagation(); 
             this._isDrawing = false;
-            if (this._activeTool) {
+
+            // FIX: Continuous drawing for Brush/Highlighter
+            if (this._activeToolType === 'Brush' || this._activeToolType === 'Highlighter') {
+                // Stay in Brush mode:
+                // 1. Do NOT reset _activeToolType
+                // 2. Do NOT setChartInteraction(true)
+                // 3. Do NOT select the tool (so we don't switch toolbar to "Edit Mode" for the specific shape)
+
+                // Just cleanup active drawing state
+                this._activeTool = null;
+                this._points = [];
+                return;
+            } else if (this._activeTool) {
+                // Standard logic for other tools
                 this._selectTool(this._activeTool);
-                // Reset for immediate drag capability
                 this._activeToolType = 'None';
                 this._setChartInteraction(true);
             }
+
             this._activeTool = null;
             this._points = [];
         }
@@ -2347,6 +2511,8 @@ export class LineToolManager extends PluginBase {
                 // Reset for immediate drag capability
                 this._activeToolType = 'None';
                 this._setChartInteraction(true);
+
+                this.onToolCompleted?.();
                 this._isRightClick = false;
                 return;
             }
@@ -2359,6 +2525,9 @@ export class LineToolManager extends PluginBase {
     };
 
     private _rawMouseMoveHandler = (event: MouseEvent) => {
+        // Track shift key for 45-degree angle snapping
+        this._shiftPressed = event.shiftKey;
+
         // Update toolbar position if it's following mouse (optional, for now we keep it static after show)
         // But if we want the collapsed icon to follow mouse until click:
         if (this._activeToolType !== 'None' && !this._activeTool && !this._selectedTool) {

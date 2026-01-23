@@ -26,6 +26,8 @@ export const calculateTreemapLayout = (items, x, y, width, height) => {
     let currentWidth = width;
     let currentHeight = height;
 
+    let remainingValue = totalValue;
+
     while (remaining.length > 0) {
         const isHorizontal = currentWidth >= currentHeight;
         const mainSide = isHorizontal ? currentHeight : currentWidth;
@@ -38,13 +40,15 @@ export const calculateTreemapLayout = (items, x, y, width, height) => {
         for (let i = 1; i < remaining.length; i++) {
             const testRow = [...row, remaining[i]];
             const testValue = rowValue + remaining[i].value;
-            const rowWidth = (testValue / totalValue) * (isHorizontal ? currentWidth : currentHeight);
+
+            // Fix: Calculate thickness relative to REMAINING value/space interaction
+            const rowThickness = (testValue / remainingValue) * (isHorizontal ? currentWidth : currentHeight);
 
             // Calculate worst aspect ratio in current test row
             let testWorst = 0;
             testRow.forEach(item => {
-                const itemHeight = (item.value / testValue) * mainSide;
-                const ratio = Math.max(rowWidth / itemHeight, itemHeight / rowWidth);
+                const itemLength = (item.value / testValue) * mainSide;
+                const ratio = Math.max(rowThickness / itemLength, itemLength / rowThickness);
                 testWorst = Math.max(testWorst, ratio);
             });
 
@@ -58,7 +62,7 @@ export const calculateTreemapLayout = (items, x, y, width, height) => {
         }
 
         // Layout the row
-        const rowFraction = rowValue / totalValue;
+        const rowFraction = rowValue / remainingValue;
         const rowSize = isHorizontal
             ? rowFraction * currentWidth
             : rowFraction * currentHeight;
@@ -89,6 +93,7 @@ export const calculateTreemapLayout = (items, x, y, width, height) => {
         });
 
         // Update remaining and area
+        remainingValue -= rowValue; // CRITICAL: Update remaining value basis
         remaining = remaining.slice(row.length);
         if (isHorizontal) {
             currentX += rowSize;

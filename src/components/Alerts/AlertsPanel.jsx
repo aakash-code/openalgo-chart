@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { X, Bell, Trash2, PlayCircle, PauseCircle, Clock, Edit2 } from 'lucide-react';
+import { X, Bell, Trash2, PlayCircle, PauseCircle, Clock, Edit2, TrendingUp } from 'lucide-react';
 import styles from './AlertsPanel.module.css';
 import classNames from 'classnames';
 
@@ -85,27 +85,43 @@ const AlertsPanel = ({ alerts, logs, onRemoveAlert, onRestartAlert, onPauseAlert
                                 // Normalize status so we always show a readable label
                                 const status = alert.status || 'Active';
                                 const statusKey = status.toLowerCase();
+                                const isIndicatorAlert = alert.type === 'indicator';
+
+                                // Get alert icon based on type
+                                const AlertIcon = isIndicatorAlert ? TrendingUp : Bell;
+
+                                // Get condition description
+                                const getConditionDescription = () => {
+                                    if (isIndicatorAlert) {
+                                        return alert.condition?.label || alert.name || 'Indicator Alert';
+                                    }
+                                    return alert.condition || 'Price Alert';
+                                };
 
                                 return (
                                     <div
                                         key={alert.id}
                                         className={classNames(styles.item, styles[statusKey], {
-                                            [styles.focused]: index === focusedIndex
+                                            [styles.focused]: index === focusedIndex,
+                                            [styles.indicatorAlert]: isIndicatorAlert
                                         })}
                                         onClick={(e) => handleAlertClick(alert, e)}
                                         style={{ cursor: 'pointer' }}
                                         title="Click to view chart"
                                     >
                                         <div className={styles.itemHeader}>
-                                            <span className={styles.symbol}>
-                                                {alert.symbol}{alert.exchange ? `:${alert.exchange}` : ''}
-                                            </span>
+                                            <div className={styles.symbolGroup}>
+                                                <AlertIcon size={14} className={styles.alertTypeIcon} />
+                                                <span className={styles.symbol}>
+                                                    {alert.symbol}{alert.exchange ? `:${alert.exchange}` : ''}
+                                                </span>
+                                            </div>
                                             <span className={classNames(styles.status, styles[statusKey])}>
                                                 {status}
                                             </span>
                                         </div>
                                         <div className={styles.condition}>
-                                            {alert.condition}
+                                            {getConditionDescription()}
                                         </div>
                                         <div className={styles.itemFooter}>
                                             <span className={styles.time}>

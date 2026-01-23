@@ -8,10 +8,16 @@
 
 import { subscribeToMultiTicker } from './openalgo';
 import logger from '../utils/logger';
+import { IndicatorDataManager } from './indicatorDataManager';
+import { AlertEvaluator } from '../utils/alerts/alertEvaluator';
 
 // Must match ChartComponent.jsx storage key
 const ALERT_STORAGE_KEY = 'tv_chart_alerts';
+const APP_ALERT_STORAGE_KEY = 'tv_alerts'; // App.jsx indicator alerts
 const ALERT_RETENTION_MS = 24 * 60 * 60 * 1000; // 24 hours
+const CACHE_EXPIRY_MS = 5 * 60 * 1000; // 5 minutes (matches ChartComponent's refresh rate)
+const CACHE_REFRESH_INTERVAL_MS = 5000; // Refresh alert cache every 5 seconds
+const CHECK_STALE_INTERVAL_MS = 60 * 1000; // Check for stale code every 1 minute
 
 /**
  * @typedef {Object} StoredAlert
@@ -52,6 +58,47 @@ class GlobalAlertMonitor {
 
         /** @type {boolean} */
         this._isRunning = false;
+
+        /** @type {IndicatorDataManager} Indicator calculations */
+        this._indicatorDataManager = new IndicatorDataManager();
+
+        /** @type {AlertEvaluator} Alert condition evaluator */
+        this._alertEvaluator = new AlertEvaluator();
+
+        /** @type {Map<string, { data: Array, timestamp: number, lastAccessed: number }>} OHLC data cache per symbol-interval */
+        this._ohlcCache = new Map();
+
+        /** @type {Map<string, Object>} Previous bar indicator values */
+        this._previousIndicatorValues = new Map();
+
+        /** @type {StoredAlert[]} Cached alerts - refreshed periodically */
+        this._cachedAlerts = [];
+
+        /** @type {number} Last time alerts were loaded from localStorage */
+        this._lastCacheRefresh = 0;
+
+        /** @type {number|null} Cache refresh interval ID */
+        this._cacheRefreshIntervalId = null;
+
+        /** @type {number|null} Stale cache cleanup interval ID */
+        this._cleanupIntervalId = null;
+
+        // Listen for storage changes from other tabs
+        this._handleStorageChange = this._handleStorageChange.bind(this);
+        if (typeof window !== 'undefined') {
+            window.addEventListener('storage', this._handleStorageChange);
+        }
+    }
+
+    /**
+     * Handle storage changes from other tabs
+     * @param {StorageEvent} event
+     */
+    _handleStorageChange(event) {
+        if (event.key === ALERT_STORAGE_KEY || event.key === APP_ALERT_STORAGE_KEY) {
+            logger.debug('[GlobalAlertMonitor] Storage changed in another tab, refreshing cache');
+            this._refreshAlertCache();
+        }
     }
 
     /**
@@ -64,43 +111,86 @@ class GlobalAlertMonitor {
     }
 
     /**
-     * Load all alerts from localStorage
+     * Load all alerts from localStorage (both price and indicator alerts)
      * @returns {StoredAlert[]}
      */
-    _loadAlerts() {
+    _loadAlertsFromStorage() {
         try {
-            const stored = localStorage.getItem(ALERT_STORAGE_KEY);
-            if (!stored) return [];
-
-            const data = JSON.parse(stored);
-            if (!data || typeof data !== 'object') return [];
-
-            // Data format: { [symbol-exchange]: [alerts], ... }
             const allAlerts = [];
             const cutoff = Date.now() - ALERT_RETENTION_MS;
 
-            for (const [key, alerts] of Object.entries(data)) {
-                if (!Array.isArray(alerts)) continue;
+            // Load price alerts from chart storage
+            const chartStored = localStorage.getItem(ALERT_STORAGE_KEY);
+            if (chartStored) {
+                const data = JSON.parse(chartStored);
+                if (data && typeof data === 'object') {
+                    // Data format: { [symbol-exchange]: [alerts], ... }
+                    for (const [key, alerts] of Object.entries(data)) {
+                        if (!Array.isArray(alerts)) continue;
 
-                for (const alert of alerts) {
-                    // Filter expired and already triggered
-                    if (alert.createdAt && alert.createdAt < cutoff) continue;
-                    if (alert.status === 'triggered') continue;
+                        for (const alert of alerts) {
+                            // Filter expired and already triggered
+                            if (alert.createdAt && alert.createdAt < cutoff) continue;
+                            if (alert.status === 'triggered') continue;
 
-                    const [symbol, exchange] = key.split(':');
-                    allAlerts.push({
-                        ...alert,
-                        symbol: symbol || alert.symbol,
-                        exchange: exchange || alert.exchange || 'NSE',
-                    });
+                            const [symbol, exchange] = key.split(':');
+                            allAlerts.push({
+                                ...alert,
+                                type: 'price', // Mark as price alert
+                                symbol: symbol || alert.symbol,
+                                exchange: exchange || alert.exchange || 'NSE',
+                            });
+                        }
+                    }
                 }
             }
 
+            // Load indicator alerts from App.jsx storage
+            const appStored = localStorage.getItem(APP_ALERT_STORAGE_KEY);
+            if (appStored) {
+                const alerts = JSON.parse(appStored);
+                if (Array.isArray(alerts)) {
+                    for (const alert of alerts) {
+                        // Filter expired, triggered, and paused
+                        if (alert.created_at && alert.created_at < cutoff) continue;
+                        if (alert.status === 'Triggered' || alert.status === 'Paused') continue;
+                        if (alert.type !== 'indicator') continue; // Only indicator alerts
+
+                        allAlerts.push({
+                            ...alert,
+                            createdAt: alert.created_at, // Normalize field names
+                        });
+                    }
+                }
+            }
+
+            logger.debug(`[GlobalAlertMonitor] Loaded ${allAlerts.length} active alerts from storage`);
             return allAlerts;
         } catch (error) {
             logger.error('[GlobalAlertMonitor] Error loading alerts:', error);
             return [];
         }
+    }
+
+    /**
+     * Refresh the in-memory alert cache
+     */
+    _refreshAlertCache() {
+        this._cachedAlerts = this._loadAlertsFromStorage();
+        this._lastCacheRefresh = Date.now();
+    }
+
+    /**
+     * Get cached alerts (refreshes if cache is stale)
+     * @param {boolean} forceRefresh - Force reload from localStorage
+     * @returns {StoredAlert[]}
+     */
+    _getAlerts(forceRefresh = false) {
+        const now = Date.now();
+        if (forceRefresh || now - this._lastCacheRefresh > CACHE_REFRESH_INTERVAL_MS) {
+            this._refreshAlertCache();
+        }
+        return this._cachedAlerts;
     }
 
     /**
@@ -112,12 +202,15 @@ class GlobalAlertMonitor {
             // Group alerts by symbol-exchange
             const grouped = {};
             for (const alert of alerts) {
+                if (alert.type === 'indicator') continue; // Don't save indicator alerts here
                 const key = this._getSymbolKey(alert.symbol, alert.exchange);
                 if (!grouped[key]) grouped[key] = [];
                 grouped[key].push(alert);
             }
 
             localStorage.setItem(ALERT_STORAGE_KEY, JSON.stringify(grouped));
+            // Refresh cache after save
+            this._refreshAlertCache();
         } catch (error) {
             logger.error('[GlobalAlertMonitor] Error saving alerts:', error);
         }
@@ -128,7 +221,7 @@ class GlobalAlertMonitor {
      * @param {string} alertId 
      */
     _removeAlert(alertId) {
-        const alerts = this._loadAlerts().filter(a => a.id !== alertId);
+        const alerts = this._getAlerts(true).filter(a => a.id !== alertId);
         this._saveAlerts(alerts);
         this._alertPositions.delete(alertId);
     }
@@ -140,7 +233,9 @@ class GlobalAlertMonitor {
      * @returns {AlertTriggerEvent|null}
      */
     _checkCrossing(alert, currentPrice) {
-        const key = this._getSymbolKey(alert.symbol, alert.exchange);
+        if (!alert || !alert.symbol || currentPrice === undefined) return null;
+
+        const key = this._getSymbolKey(alert.symbol, alert.exchange || 'NSE');
         const lastPrice = this._lastPrices.get(key);
 
         // Need previous price to detect crossing
@@ -198,17 +293,76 @@ class GlobalAlertMonitor {
     }
 
     /**
-     * Handle incoming price update
-     * @param {Object} data - { symbol, exchange, last }
+     * Check if indicator alert condition is met
+     * @param {Object} alert - Indicator alert object
+     * @param {Object} indicatorData - Current indicator values
+     * @param {Object} previousData - Previous bar indicator values
+     * @param {number} currentPrice - Current price (for price-based comparisons)
+     * @param {number} previousPrice - Previous price (for price-based comparisons)
+     * @returns {AlertTriggerEvent|null}
      */
-    _onPriceUpdate(data) {
-        if (!data || !data.symbol || !data.last) return;
+    _checkIndicatorAlert(alert, indicatorData, previousData, currentPrice = null, previousPrice = null) {
+        try {
+            const condition = alert.condition;
+            if (!condition || !condition.type) {
+                logger.warn('[GlobalAlertMonitor] Invalid indicator alert condition:', alert.id);
+                return null;
+            }
 
-        const { symbol, exchange = 'NSE', last: currentPrice } = data;
+            // Build proper data structure for evaluator
+            const currentData = { [alert.indicator]: indicatorData };
+            const prevData = previousData ? { [alert.indicator]: previousData } : {};
+
+            // Use AlertEvaluator to check condition - pass full condition object
+            const isTriggered = this._alertEvaluator.evaluate(
+                { ...condition, indicator: alert.indicator },
+                currentData,
+                prevData,
+                currentPrice,  // Pass current price for price-based comparisons
+                previousPrice  // Pass previous price for price-based comparisons
+            );
+
+            if (isTriggered) {
+                logger.info('[GlobalAlertMonitor] Indicator alert triggered:', {
+                    id: alert.id,
+                    indicator: alert.indicator,
+                    condition: condition.label
+                });
+
+                return {
+                    alertId: alert.id,
+                    symbol: alert.symbol,
+                    exchange: alert.exchange,
+                    alertType: 'indicator',
+                    indicator: alert.indicator,
+                    condition: condition.label,
+                    conditionType: condition.type,
+                    timestamp: Date.now(),
+                    message: alert.message || `${alert.indicator} ${condition.label}`,
+                };
+            }
+
+            return null;
+        } catch (error) {
+            logger.error('[GlobalAlertMonitor] Error checking indicator alert:', error);
+            return null;
+        }
+    }
+
+    /**
+     * Handle incoming price update
+     * @param {Object} data - { symbol, exchange, last, open, high, low, close, volume, timestamp }
+     */
+    async _onPriceUpdate(data) {
+        if (!data || !data.symbol || data.last === undefined || data.last === null) return;
+
+        const symbol = data.symbol;
+        const exchange = data.exchange || 'NSE';
+        const currentPrice = data.last;
         const key = this._getSymbolKey(symbol, exchange);
 
-        // Get alerts for this symbol
-        const alerts = this._loadAlerts().filter(
+        // Get cached alerts for this symbol (no localStorage parsing on every tick)
+        const alerts = this._getAlerts().filter(
             a => a.symbol === symbol && (a.exchange || 'NSE') === exchange
         );
 
@@ -216,12 +370,16 @@ class GlobalAlertMonitor {
             console.log('[GlobalAlertMonitor] Price update', symbol, currentPrice, '- checking', alerts.length, 'alerts');
         }
 
-        // Check each alert for crossing
-        for (const alert of alerts) {
+        // Separate price and indicator alerts
+        const priceAlerts = alerts.filter(a => a.type === 'price' || !a.type);
+        const indicatorAlerts = alerts.filter(a => a.type === 'indicator');
+
+        // Check price alerts
+        for (const alert of priceAlerts) {
             const triggerEvent = this._checkCrossing(alert, currentPrice);
 
             if (triggerEvent) {
-                console.log('[GlobalAlertMonitor] Alert triggered:', triggerEvent);
+                console.log('[GlobalAlertMonitor] Price alert triggered:', triggerEvent);
 
                 // Remove the alert (one-shot)
                 this._removeAlert(alert.id);
@@ -233,8 +391,209 @@ class GlobalAlertMonitor {
             }
         }
 
+        // Check indicator alerts (if any)
+        if (indicatorAlerts.length > 0) {
+            for (const alert of indicatorAlerts) {
+                try {
+                    const interval = alert.interval || '1m';
+                    const cacheKey = `${key}:${interval}:${alert.indicator}`;
+
+                    // Get OHLC data from cache (provided by charts)
+                    const ohlcData = this._getOHLCData(symbol, exchange, interval);
+
+                    if (!ohlcData || ohlcData.length === 0) {
+                        // No OHLC data available yet - skip this alert
+                        logger.debug(`[GlobalAlertMonitor] No OHLC data for ${symbol}:${exchange}:${interval}, skipping indicator alert`);
+                        continue;
+                    }
+
+                    logger.debug(`[GlobalAlertMonitor] Calculating ${alert.indicator} for ${symbol} with ${ohlcData.length} bars`);
+
+                    // Calculate indicator values using actual OHLC data
+                    const indicatorData = await this._indicatorDataManager.calculateIndicator(
+                        alert.indicator,
+                        { symbol, exchange, interval },
+                        ohlcData
+                    );
+
+                    // Get previous values
+                    const previousData = this._previousIndicatorValues.get(cacheKey);
+
+                    // Check alert condition
+                    if (indicatorData && indicatorData.current) {
+                        // Get previous price for price-based comparisons
+                        const previousPrice = this._lastPrices.get(key);
+                        const triggerEvent = this._checkIndicatorAlert(alert, indicatorData.current, previousData, currentPrice, previousPrice);
+
+                        if (triggerEvent) {
+                            console.log('[GlobalAlertMonitor] Indicator alert triggered:', triggerEvent);
+
+                            // Handle frequency: once_per_bar removes alert, every_time keeps it active
+                            const frequency = alert.frequency || 'once_per_bar';
+                            if (frequency === 'once_per_bar') {
+                                // Mark alert as triggered in App storage (will be filtered out on next load)
+                                this._markIndicatorAlertTriggered(alert.id);
+                            }
+                            // For 'every_time', alert remains active and will trigger again
+
+                            // Fire callback
+                            if (this._onTrigger) {
+                                this._onTrigger(triggerEvent);
+                            }
+                        }
+
+                        // Store current values as previous for next check
+                        this._previousIndicatorValues.set(cacheKey, indicatorData.current);
+                    }
+                } catch (error) {
+                    logger.error(`[GlobalAlertMonitor] Error checking indicator alert ${alert.id}:`, error);
+                }
+            }
+        }
+
         // Update last price
         this._lastPrices.set(key, currentPrice);
+    }
+
+    /**
+     * Mark an indicator alert as triggered in localStorage
+     * @param {string} alertId 
+     */
+    _markIndicatorAlertTriggered(alertId) {
+        try {
+            const stored = localStorage.getItem(APP_ALERT_STORAGE_KEY);
+            if (!stored) return;
+
+            const alerts = JSON.parse(stored);
+            if (!Array.isArray(alerts)) return;
+
+            const updated = alerts.map(a =>
+                a.id === alertId ? { ...a, status: 'Triggered' } : a
+            );
+
+            localStorage.setItem(APP_ALERT_STORAGE_KEY, JSON.stringify(updated));
+            // Refresh cache after updating
+            this._refreshAlertCache();
+        } catch (error) {
+            logger.error('[GlobalAlertMonitor] Error marking indicator alert as triggered:', error);
+        }
+    }
+
+    /**
+     * Update OHLC data cache for a symbol-interval combination
+     * Called by charts to provide historical data for indicator calculations
+     * @param {string} symbol 
+     * @param {string} exchange 
+     * @param {string} interval 
+     * @param {Array} ohlcData - Array of OHLC bars
+     */
+    updateOHLCData(symbol, exchange, interval, ohlcData) {
+        if (!symbol || !ohlcData || !Array.isArray(ohlcData)) {
+            logger.warn('[GlobalAlertMonitor] Invalid OHLC data provided');
+            return;
+        }
+
+        const normalizedInterval = this._normalizeInterval(interval);
+
+        // Store with normalized format
+        const cacheKey = `${symbol}:${exchange}:${normalizedInterval}`;
+        const now = Date.now();
+
+        this._ohlcCache.set(cacheKey, {
+            data: ohlcData,
+            timestamp: now,
+            lastAccessed: now
+        });
+
+        // Also store with original format for compatibility
+        if (normalizedInterval !== interval) {
+            const originalKey = `${symbol}:${exchange}:${interval}`;
+            this._ohlcCache.set(originalKey, {
+                data: ohlcData,
+                timestamp: now,
+                lastAccessed: now
+            });
+        }
+
+        logger.debug(`[GlobalAlertMonitor] Updated OHLC cache for ${cacheKey}, bars: ${ohlcData.length}`);
+    }
+
+    /**
+     * Normalize interval format (e.g., '1' -> '1m', '3' -> '3m')
+     * @param {string} interval 
+     * @returns {string} Normalized interval
+     */
+    _normalizeInterval(interval) {
+        if (!interval) return interval;
+        // If interval is just a number, assume minutes
+        if (/^\d+$/.test(interval)) {
+            return `${interval}m`;
+        }
+        return interval;
+    }
+
+    /**
+     * Get cached OHLC data for a symbol-interval
+     * @param {string} symbol 
+     * @param {string} exchange 
+     * @param {string} interval 
+     * @returns {Array|null}
+     */
+    _getOHLCData(symbol, exchange, interval) {
+        const normalizedInterval = this._normalizeInterval(interval);
+        const cacheKey = `${symbol}:${exchange}:${normalizedInterval}`;
+        const cached = this._ohlcCache.get(cacheKey);
+
+        if (!cached) {
+            // Try alternative formats if exact match fails
+            const alternatives = [
+                interval, // Original format
+                interval.replace(/m$/, ''), // Remove 'm' suffix
+                `${interval.replace(/m$/, '')}m`, // Add 'm' suffix
+            ].filter(alt => alt !== normalizedInterval);
+
+            for (const alt of alternatives) {
+                const altKey = `${symbol}:${exchange}:${alt}`;
+                const altCached = this._ohlcCache.get(altKey);
+                if (altCached) {
+                    logger.debug(`[GlobalAlertMonitor] Found OHLC data with alternative interval format: ${alt} (requested: ${interval})`);
+                    altCached.lastAccessed = Date.now(); // Update access time
+                    return altCached.data;
+                }
+            }
+            return null;
+        }
+
+        // Check explicit expiry logic if needed, but the periodic cleanup handles this now.
+        // We can still do a quick check to avoid using very old data
+        const age = Date.now() - cached.timestamp;
+        if (age > CACHE_EXPIRY_MS + 60000) { // Allow slight grace period over expiry
+            // Allow grace period for lookup, but it will be cleaned up by interval
+        }
+
+        cached.lastAccessed = Date.now(); // Update access time
+        return cached.data;
+    }
+
+    /**
+     * Remove stale entries from OHLC cache
+     */
+    _cleanStaleCache() {
+        const now = Date.now();
+        let removedCount = 0;
+
+        for (const [key, entry] of this._ohlcCache.entries()) {
+            // Check if data is older than expiry AND hasn't been accessed recently
+            // This prevents deleting data that is still actively being queried even if not updated recently
+            if (now - entry.lastAccessed > CACHE_EXPIRY_MS) {
+                this._ohlcCache.delete(key);
+                removedCount++;
+            }
+        }
+
+        if (removedCount > 0) {
+            logger.debug(`[GlobalAlertMonitor] Cleaned ${removedCount} stale entries from OHLC cache`);
+        }
     }
 
     /**
@@ -250,6 +609,16 @@ class GlobalAlertMonitor {
 
         this._onTrigger = onTrigger;
         this._restart();
+
+        // Start periodic cache refresh
+        this._cacheRefreshIntervalId = setInterval(() => {
+            this._refreshAlertCache();
+        }, CACHE_REFRESH_INTERVAL_MS);
+
+        // Start periodic stale cache cleanup
+        this._cleanupIntervalId = setInterval(() => {
+            this._cleanStaleCache();
+        }, CHECK_STALE_INTERVAL_MS);
     }
 
     /**
@@ -259,7 +628,10 @@ class GlobalAlertMonitor {
         // Close existing connection
         this.stop();
 
-        const alerts = this._loadAlerts();
+        // Force refresh alert cache
+        this._refreshAlertCache();
+
+        const alerts = this._cachedAlerts;
         console.log('[GlobalAlertMonitor] Loaded alerts for monitoring:', alerts);
         if (alerts.length === 0) {
             console.log('[GlobalAlertMonitor] No alerts to monitor');
@@ -269,7 +641,7 @@ class GlobalAlertMonitor {
         // Get unique symbols to subscribe
         const symbolsMap = new Map();
         for (const alert of alerts) {
-            const key = this._getSymbolKey(alert.symbol, alert.exchange);
+            const key = this._getSymbolKey(alert.symbol, alert.exchange || 'NSE');
             if (!symbolsMap.has(key)) {
                 symbolsMap.set(key, { symbol: alert.symbol, exchange: alert.exchange || 'NSE' });
             }
@@ -282,13 +654,32 @@ class GlobalAlertMonitor {
         console.log('[GlobalAlertMonitor] Starting monitor for', symbols.length, 'symbols:', symbols);
 
         this._isRunning = true;
-        this._ws = subscribeToMultiTicker(symbols, (data) => this._onPriceUpdate(data));
+
+        // Wrap async callback properly
+        this._ws = subscribeToMultiTicker(symbols, (data) => {
+            this._onPriceUpdate(data).catch(err => {
+                logger.error('[GlobalAlertMonitor] Error in price update handler:', err);
+            });
+        });
     }
 
     /**
-     * Stop monitoring
+     * Stop monitoring and clean up resources
      */
     stop() {
+        // Clear cache refresh interval
+        if (this._cacheRefreshIntervalId) {
+            clearInterval(this._cacheRefreshIntervalId);
+            this._cacheRefreshIntervalId = null;
+        }
+
+        // Clear cleanup interval
+        if (this._cleanupIntervalId) {
+            clearInterval(this._cleanupIntervalId);
+            this._cleanupIntervalId = null;
+        }
+
+        // Close WebSocket
         if (this._ws) {
             try {
                 if (typeof this._ws.close === 'function') {
@@ -299,6 +690,14 @@ class GlobalAlertMonitor {
             }
             this._ws = null;
         }
+
+        // Clear memory caches to prevent unbounded growth
+        this._lastPrices.clear();
+        this._alertPositions.clear();
+        this._previousIndicatorValues.clear();
+        this._ohlcCache.clear();
+        this._cachedAlerts = [];
+
         this._isRunning = false;
     }
 
@@ -306,6 +705,9 @@ class GlobalAlertMonitor {
      * Refresh the monitor (call when alerts change)
      */
     refresh() {
+        // Force refresh cache
+        this._refreshAlertCache();
+
         if (this._onTrigger) {
             this._restart();
         }
@@ -316,6 +718,16 @@ class GlobalAlertMonitor {
      */
     isRunning() {
         return this._isRunning;
+    }
+
+    /**
+     * Cleanup when instance is destroyed
+     */
+    destroy() {
+        this.stop();
+        if (typeof window !== 'undefined') {
+            window.removeEventListener('storage', this._handleStorageChange);
+        }
     }
 }
 

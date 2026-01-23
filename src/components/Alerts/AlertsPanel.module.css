@@ -187,3 +187,23 @@
     outline: 1px solid var(--tv-color-brand);
     outline-offset: -1px;
 }
+
+/* Indicator alert differentiation */
+.symbolGroup {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.alertTypeIcon {
+    color: var(--tv-color-text-secondary);
+    flex-shrink: 0;
+}
+
+.indicatorAlert .alertTypeIcon {
+    color: #2962FF;
+}
+
+.indicatorAlert {
+    border-left: 2px solid #2962FF;
+}

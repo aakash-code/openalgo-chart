@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
+import { persist, createJSONStorage, subscribeWithSelector } from 'zustand/middleware';
 
 // Helper to safely parse JSON
 const safeParseJSON = (value, fallback) => {
@@ -71,7 +71,7 @@ const loadInitialState = () => {
             layout: oldData.layout || '1',
             activeChartId: migratedCharts[0]?.id || 1, // Default to first chart logic
             charts: migratedCharts.length > 0 ? migratedCharts : [
-                { id: 1, symbol: 'NIFTY', exchange: 'NSE_INDEX', interval: '1D', indicators: [] }
+                { id: 1, symbol: 'NIFTY', exchange: 'NSE_INDEX', interval: 'D', indicators: [] }
             ],
             chartRefs: {}
         };
@@ -82,108 +82,164 @@ const loadInitialState = () => {
         layout: '1',
         activeChartId: 1,
         charts: [
-            { id: 1, symbol: 'NIFTY', exchange: 'NSE_INDEX', interval: '1D', indicators: [] }
+            { id: 1, symbol: 'NIFTY', exchange: 'NSE_INDEX', interval: 'D', indicators: [] }
         ],
         chartRefs: {} // Non-persisted refs
     };
 };
 
 export const useWorkspaceStore = create(
-    persist(
-        (set, get) => ({
-            ...loadInitialState(),
+    subscribeWithSelector(
+        persist(
+            (set, get) => ({
+                ...loadInitialState(),
 
-            // Actions
-            setLayout: (layout) => set({ layout }),
+                // Actions
+                setLayout: (layout) => set({ layout }),
 
-            setActiveChartId: (idOrFn) => set((state) => ({
-                activeChartId: typeof idOrFn === 'function' ? idOrFn(state.activeChartId) : idOrFn
-            })),
+                setActiveChartId: (idOrFn) => set((state) => ({
+                    activeChartId: typeof idOrFn === 'function' ? idOrFn(state.activeChartId) : idOrFn
+                })),
 
-            setCharts: (chartsOrFn) => set((state) => ({
-                charts: typeof chartsOrFn === 'function' ? chartsOrFn(state.charts) : chartsOrFn
-            })),
+                setCharts: (chartsOrFn) => set((state) => ({
+                    charts: typeof chartsOrFn === 'function' ? chartsOrFn(state.charts) : chartsOrFn
+                })),
 
-            addChart: (newChart) => set((state) => ({
-                charts: [...state.charts, newChart],
-                activeChartId: newChart.id
-            })),
+                addChart: (newChart) => set((state) => ({
+                    charts: [...state.charts, newChart],
+                    activeChartId: newChart.id
+                })),
 
-            removeChart: (id) => set((state) => {
-                const newCharts = state.charts.filter(c => c.id !== id);
-                let newActiveId = state.activeChartId;
-                // If removing active chart, select the first one available
-                if (state.activeChartId === id) {
-                    newActiveId = newCharts[0]?.id || null;
-                }
-                return { charts: newCharts, activeChartId: newActiveId };
-            }),
+                removeChart: (id) => set((state) => {
+                    const newCharts = state.charts.filter(c => c.id !== id);
+                    let newActiveId = state.activeChartId;
+                    // If removing active chart, select the first one available
+                    if (state.activeChartId === id) {
+                        newActiveId = newCharts[0]?.id || null;
+                    }
+                    return { charts: newCharts, activeChartId: newActiveId };
+                }),
 
-            updateChart: (id, updates) => set((state) => ({
-                charts: state.charts.map(c => c.id === id ? { ...c, ...updates } : c)
-            })),
+                updateChart: (id, updates) => set((state) => ({
+                    charts: state.charts.map(c => c.id === id ? { ...c, ...updates } : c)
+                })),
 
-            // Helper to update specific indicator
-            updateIndicator: (chartId, indicatorId, settings) => set((state) => ({
-                charts: state.charts.map(chart => {
-                    if (chart.id !== chartId) return chart;
-                    return {
+                // Helper to update specific indicator
+                updateIndicator: (chartId, indicatorId, settings) => set((state) => ({
+                    charts: state.charts.map(chart => {
+                        if (chart.id !== chartId) return chart;
+                        return {
+                            ...chart,
+                            indicators: chart.indicators.map(ind =>
+                                ind.id === indicatorId ? { ...ind, ...settings } : ind
+                            )
+                        };
+                    })
+                })),
+
+                addIndicator: (chartId, indicator) => set((state) => ({
+                    charts: state.charts.map(chart => {
+                        if (chart.id !== chartId) return chart;
+                        return { ...chart, indicators: [...chart.indicators, indicator] };
+                    })
+                })),
+
+                removeIndicator: (chartId, indicatorId) => set((state) => ({
+                    charts: state.charts.map(chart => {
+                        if (chart.id !== chartId) return chart;
+                        return {
+                            ...chart,
+                            indicators: chart.indicators.filter(ind => ind.id !== indicatorId)
+                        };
+                    })
+                })),
+
+                // Ref Handling
+                setChartRef: (id, ref) => set((state) => ({
+                    chartRefs: { ...state.chartRefs, [id]: ref }
+                })),
+
+                getChartRef: (id) => {
+                    return get().chartRefs[id];
+                },
+
+                // Cloud Sync: Hydrate store directly from cloud data
+                // This allows updating the store without requiring a remount
+                setFromCloud: (cloudLayoutData) => set((state) => {
+                    if (!cloudLayoutData) return state;
+
+                    // Parse if string (from localStorage format)
+                    let layoutData;
+                    try {
+                        layoutData = typeof cloudLayoutData === 'string'
+                            ? JSON.parse(cloudLayoutData)
+                            : cloudLayoutData;
+                    } catch (e) {
+                        console.error('[WorkspaceStore] Failed to parse cloud data:', e);
+                        return state;
+                    }
+
+                    // Validate structure
+                    if (!layoutData || typeof layoutData !== 'object') {
+                        return state;
+                    }
+
+                    // Migrate charts (same logic as loadInitialState)
+                    const migratedCharts = (layoutData.charts || []).map(chart => ({
                         ...chart,
-                        indicators: chart.indicators.map(ind =>
-                            ind.id === indicatorId ? { ...ind, ...settings } : ind
-                        )
-                    };
-                })
-            })),
-
-            addIndicator: (chartId, indicator) => set((state) => ({
-                charts: state.charts.map(chart => {
-                    if (chart.id !== chartId) return chart;
-                    return { ...chart, indicators: [...chart.indicators, indicator] };
-                })
-            })),
-
-            removeIndicator: (chartId, indicatorId) => set((state) => ({
-                charts: state.charts.map(chart => {
-                    if (chart.id !== chartId) return chart;
-                    return {
-                        ...chart,
-                        indicators: chart.indicators.filter(ind => ind.id !== indicatorId)
-                    };
-                })
-            })),
-
-            // Ref Handling
-            setChartRef: (id, ref) => set((state) => ({
-                chartRefs: { ...state.chartRefs, [id]: ref }
-            })),
-
-            getChartRef: (id) => {
-                return get().chartRefs[id];
-            }
-        }),
-        {
-            name: 'openalgo-workspace-storage', // New storage key
-            storage: createJSONStorage(() => localStorage),
-            version: 1, // Add versioning
-            migrate: (persistedState, version) => {
-                let state = persistedState;
-                if (version === 0) {
-                    // Migration for version 0 (initial release with NIFTY 50 bug)
-                    state.charts = (state.charts || []).map(chart => ({
-                        ...chart,
+                        // Fix invalid default NIFTY 50
                         symbol: chart.symbol === 'NIFTY 50' ? 'NIFTY' : chart.symbol,
-                        exchange: (chart.symbol === 'NIFTY 50' || chart.symbol === 'NIFTY') ? 'NSE_INDEX' : chart.exchange
+                        exchange: (chart.symbol === 'NIFTY 50' || chart.symbol === 'NIFTY')
+                            ? 'NSE_INDEX' : chart.exchange,
+                        indicators: migrateIndicators(chart.indicators || []).map(ind => {
+                            // Fix 'classic' pivot type bug
+                            if (ind.type === 'classic') {
+                                return { ...ind, type: 'pivotPoints', pivotType: 'classic' };
+                            }
+                            return ind;
+                        })
                     }));
-                }
-                return state;
-            },
-            partialize: (state) => ({
-                charts: state.charts,
-                layout: state.layout,
-                activeChartId: state.activeChartId
+
+                    // Only update if we have valid data
+                    if (migratedCharts.length === 0) {
+                        return state;
+                    }
+
+                    console.log('[WorkspaceStore] Hydrating from cloud:', {
+                        layout: layoutData.layout,
+                        chartsCount: migratedCharts.length
+                    });
+
+                    return {
+                        layout: layoutData.layout || state.layout,
+                        activeChartId: layoutData.activeChartId || migratedCharts[0]?.id || state.activeChartId,
+                        charts: migratedCharts
+                    };
+                })
             }),
-            // Add extra actions to the store for ref management - wait, actions are in the create callback
-        }
-    )
-);
+            {
+                name: 'openalgo-workspace-storage', // New storage key
+                storage: createJSONStorage(() => localStorage),
+                version: 1, // Add versioning
+                migrate: (persistedState, version) => {
+                    let state = persistedState;
+                    if (version === 0) {
+                        // Migration for version 0 (initial release with NIFTY 50 bug)
+                        state.charts = (state.charts || []).map(chart => ({
+                            ...chart,
+                            symbol: chart.symbol === 'NIFTY 50' ? 'NIFTY' : chart.symbol,
+                            exchange: (chart.symbol === 'NIFTY 50' || chart.symbol === 'NIFTY') ? 'NSE_INDEX' : chart.exchange
+                        }));
+                    }
+                    return state;
+                },
+                partialize: (state) => ({
+                    charts: state.charts,
+                    layout: state.layout,
+                    activeChartId: state.activeChartId
+                }),
+                // Add extra actions to the store for ref management - wait, actions are in the create callback
+            }
+        )
+    ));
+

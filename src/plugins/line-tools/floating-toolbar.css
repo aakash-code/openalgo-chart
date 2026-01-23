@@ -2,18 +2,16 @@
 .tv-floating-toolbar {
     display: inline-flex;
     align-items: center;
-    padding: 0 8px;
+    padding: 4px 8px;
     /* Compact padding */
     gap: 4px;
     /* Tight gap between items */
     background: #ffffff;
-    border-radius: 8px;
+    border-radius: 6px;
     /* Slightly rounded corners like the image */
-    box-shadow:
-        0 2px 6px rgba(0, 0, 0, 0.1),
-        0 8px 24px rgba(0, 0, 0, 0.12);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
     /* Soft, elevated shadow */
-    height: 50px;
+    height: auto;
     /* Compact height */
     position: absolute;
     z-index: 100;
@@ -64,15 +62,15 @@
 
 /* STANDARD TOOL BUTTONS */
 .tv-floating-toolbar .tool-btn {
-    width: 36px;
-    height: 36px;
-    min-width: 36px;
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
     display: flex;
     align-items: center;
     justify-content: center;
     border: none;
     background: transparent;
-    border-radius: 6px;
+    border-radius: 4px;
     cursor: pointer;
     transition: background-color 0.2s;
     color: #131722;
@@ -86,7 +84,8 @@
 }
 
 .tv-floating-toolbar .tool-btn.active {
-    color: var(--active-color, #2962ff);
+    color: var(--tv-color-toolbar-button-text-active, #2962ff);
+    background-color: rgba(41, 98, 255, 0.1);
 }
 
 /* Fill Button Special Styling */
@@ -131,21 +130,13 @@
     border-radius: 1px;
 }
 
-/* Active Indicator (Underline style from image 1) */
-.tv-floating-toolbar .tool-btn.active::after {
-    content: '';
-    position: absolute;
-    bottom: 2px;
-    left: 6px;
-    background: #E0E3EB;
-    margin: 0 8px;
-    flex-shrink: 0;
-}
+/* Active Indicator (Background style) */
+/* Removed ::after underline to match favorites toolbar */
 
 /* DIVIDER */
 .divider {
     width: 1px;
-    height: 24px;
+    height: 20px;
     background: #E0E3EB;
     margin: 0 8px;
     flex-shrink: 0;
@@ -157,7 +148,7 @@
     align-items: center;
     gap: 8px;
     padding: 0 8px;
-    height: 36px;
+    height: 32px;
     cursor: pointer;
     border-radius: 6px;
     color: #131722;
@@ -181,7 +172,7 @@
     align-items: center;
     justify-content: center;
     padding: 0 12px;
-    height: 36px;
+    height: 32px;
     cursor: pointer;
     border-radius: 6px;
     color: #131722;

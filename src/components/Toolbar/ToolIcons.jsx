@@ -389,3 +389,15 @@ export const ArcIcon = ({ size = 28, ...props }) => (
     </svg>
 );
 ArcIcon.propTypes = IconPropTypes;
+
+// Sequential Drawing Mode Icon - keeps tool active after drawing
+export const SequentialDrawingIcon = ({ size = 28, ...props }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28" width={size} height={size} fill="currentColor" {...props}>
+        <path d="M4 6h2v2H4zM4 12h2v2H4zM4 18h2v2H4zM10 6h2v2h-2zM10 12h2v2h-2zM10 18h2v2h-2zM16 6h2v2h-2zM16 12h2v2h-2zM16 18h2v2h-2zM22 6h2v2h-2zM22 12h2v2h-2zM22 18h2v2h-2z"></path>
+        <path d="M7 7h2v12H7z" opacity="0.5"></path>
+        <path d="M13 7h2v12h-2z" opacity="0.5"></path>
+        <path d="M19 7h2v12h-2z" opacity="0.5"></path>
+    </svg>
+);
+SequentialDrawingIcon.propTypes = IconPropTypes;
+

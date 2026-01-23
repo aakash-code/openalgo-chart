@@ -186,6 +186,57 @@ export const SHORTCUTS = {
         label: 'Toggle Fullscreen',
         action: 'toggleFullscreen',
     },
+
+    // Chart Context Menu Shortcuts
+    resetChartView: {
+        key: 'r',
+        modifiers: ['alt'],
+        category: SHORTCUT_CATEGORIES.ACTIONS,
+        label: 'Reset Chart View',
+        action: 'resetChartView',
+    },
+    addAlertAtPrice: {
+        key: 'a',
+        modifiers: ['alt'],
+        category: SHORTCUT_CATEGORIES.ACTIONS,
+        label: 'Add Alert at Price',
+        action: 'addAlertAtPrice',
+    },
+    sellLimitOrder: {
+        key: 's',
+        modifiers: ['alt', 'shift'],
+        category: SHORTCUT_CATEGORIES.ACTIONS,
+        label: 'Sell Limit Order',
+        action: 'sellLimitOrder',
+    },
+    buyLimitOrder: {
+        key: 'b',
+        modifiers: ['alt', 'shift'],
+        category: SHORTCUT_CATEGORIES.ACTIONS,
+        label: 'Buy Limit Order',
+        action: 'buyLimitOrder',
+    },
+    addOrder: {
+        key: 't',
+        modifiers: ['shift'],
+        category: SHORTCUT_CATEGORIES.ACTIONS,
+        label: 'Add Order',
+        action: 'addOrder',
+    },
+    drawHorizontalLine: {
+        key: 'h',
+        modifiers: ['alt'],
+        category: SHORTCUT_CATEGORIES.ACTIONS,
+        label: 'Draw Horizontal Line',
+        action: 'drawHorizontalLine',
+    },
+    takeScreenshot: {
+        key: 's',
+        modifiers: ['cmd', 'shift'],
+        category: SHORTCUT_CATEGORIES.ACTIONS,
+        label: 'Take Screenshot',
+        action: 'takeScreenshot',
+    },
 };
 
 /**

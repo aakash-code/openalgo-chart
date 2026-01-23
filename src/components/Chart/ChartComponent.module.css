@@ -146,6 +146,68 @@
     border-radius: 0 2px 2px 0;
 }
 
+/* Comparison Symbol Floating Price Labels (TradingView-style) */
+.comparisonPriceLabels {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    pointer-events: none;
+    z-index: 25;
+}
+
+.comparisonPriceLabel {
+    position: absolute;
+    right: 0;
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 0;
+    pointer-events: none;
+    z-index: 25;
+}
+
+.comparisonPriceLabelSymbol {
+    color: white;
+    padding: 2px 4px;
+    font-size: 10px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Trebuchet MS', Roboto, Ubuntu, sans-serif;
+    font-weight: 600;
+    border-radius: 2px 0 0 2px;
+}
+
+.comparisonPriceLabelPrice {
+    color: white;
+    padding: 2px 6px;
+    font-size: 10px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Trebuchet MS', Roboto, Ubuntu, sans-serif;
+    font-weight: 600;
+    border-radius: 0 2px 2px 0;
+    min-width: 50px;
+    text-align: right;
+}
+
+/* Left-side labels for New Price Scale mode */
+.comparisonPriceLabelLeft {
+    position: absolute;
+    left: 0;
+    right: auto;
+    transform: translateY(-50%);
+}
+
+.comparisonPriceLabelLeft .comparisonPriceLabelSymbol {
+    border-radius: 0 2px 2px 0;
+    order: 2;
+}
+
+.comparisonPriceLabelLeft .comparisonPriceLabelPrice {
+    border-radius: 2px 0 0 2px;
+    order: 1;
+    text-align: left;
+}
+
 /* Persistent Chart Label - Always visible for multi-chart layouts */
 .chartLabel {
     position: absolute;

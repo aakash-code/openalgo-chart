@@ -24,6 +24,7 @@ const WatchlistItem = ({
     sortEnabled,
     index,
     onSelect,
+    onDoubleClick,
     onRemove,
     onDragStart,
     onDragOver,
@@ -39,6 +40,12 @@ const WatchlistItem = ({
     const handleClick = useCallback(() => {
         onSelect({ symbol: item.symbol, exchange: item.exchange });
     }, [item.symbol, item.exchange, onSelect]);
+
+    const handleDoubleClick = useCallback(() => {
+        if (onDoubleClick) {
+            onDoubleClick({ symbol: item.symbol, exchange: item.exchange });
+        }
+    }, [item.symbol, item.exchange, onDoubleClick]);
 
     const handleRemoveClick = useCallback((e) => {
         e.stopPropagation();
@@ -80,6 +87,7 @@ const WatchlistItem = ({
                 [styles.dragging]: isDragging,
             })}
             onClick={handleClick}
+            onDoubleClick={handleDoubleClick}
             onContextMenu={handleContextMenu}
             onMouseEnter={handleMouseEnter}
             onMouseLeave={handleMouseLeave}

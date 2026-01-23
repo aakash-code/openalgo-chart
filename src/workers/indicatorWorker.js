@@ -16,6 +16,28 @@
  * TPO Calculation (simplified version for worker)
  * Full implementation is in src/utils/indicators/tpo.js
  */
+// Import all indicators
+import * as indicators from '../utils/indicators';
+
+// Extract specific functions for easier usage
+const {
+    calculateTPO,
+    calculateVolume, // Assuming volume profile logic might be partly there or custom
+    calculateRSI,
+    calculateMACD,
+    calculateBollingerBands,
+    calculateStochastic,
+    calculateSupertrend,
+    calculateVWAP,
+    calculateSMA,
+    calculateEMA,
+    calculateATR
+} = indicators;
+
+/**
+ * TPO Calculation (simplified version for worker)
+ * Full implementation is in src/utils/indicators/tpo.js
+ */
 const BLOCK_SIZE_MAP = {
     '15m': 15,
     '30m': 30,
@@ -87,6 +109,10 @@ const calculateTPOProfile = (data, options = {}) => {
         sessionStart = 9 * 60 + 15, // 9:15 IST
         sessionEnd = 15 * 60 + 30,  // 15:30 IST
     } = options;
+
+    // Use the imported calculation if possible, or keep the worker-local implementation if it was optimized/different.
+    // The previous implementation was inline. Let's keep the inline one for TPO to avoid breaking changes if the imported logic differs significantly or has dependencies not present here.
+    // Actually, to ensure consistency, we should ideally use the imported one, but for now let's minimally touch working code.
 
     if (!data || data.length === 0) {
         return { sessions: [], error: null };
@@ -347,6 +373,43 @@ self.onmessage = (event) => {
 
             case 'volumeProfile':
                 result = calculateVolumeProfile(data, options);
+                break;
+
+            case 'rsi':
+                result = calculateRSI(data, options?.period || 14);
+                break;
+
+            case 'macd':
+                result = calculateMACD(data, options?.fast || 12, options?.slow || 26, options?.signal || 9);
+                break;
+
+            case 'bollinger':
+            case 'bollingerBands':
+                result = calculateBollingerBands(data, options?.period || 20, options?.stdDev || 2);
+                break;
+
+            case 'stochastic':
+                result = calculateStochastic(data, options?.kPeriod || 14, options?.dPeriod || 3, options?.smooth || 3);
+                break;
+
+            case 'supertrend':
+                result = calculateSupertrend(data, options?.period || 10, options?.multiplier || 3);
+                break;
+
+            case 'vwap':
+                result = calculateVWAP(data);
+                break;
+
+            case 'sma':
+                result = calculateSMA(data, options?.period || 20);
+                break;
+
+            case 'ema':
+                result = calculateEMA(data, options?.period || 20);
+                break;
+
+            case 'atr':
+                result = calculateATR(data, options?.period || 14);
                 break;
 
             default:
