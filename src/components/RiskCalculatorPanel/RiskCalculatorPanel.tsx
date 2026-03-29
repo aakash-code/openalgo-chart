@@ -6,6 +6,8 @@ import TemplateSelector from './TemplateSelector';
 import styles from './RiskCalculatorPanel.module.css';
 
 type Side = 'BUY' | 'SELL';
+type Product = 'MIS' | 'CNC' | 'NRML';
+type SizingMode = 'cash' | 'marginPerUnit' | 'leverage';
 
 interface FormValues {
     capital: number;
@@ -15,6 +17,11 @@ interface FormValues {
     stopLossPrice: number;
     targetPrice: number;
     riskRewardRatio: number;
+    product: Product;
+    sizingMode: SizingMode;
+    availableMargin: number;
+    marginPerUnit: number;
+    leverage: number;
 }
 
 interface FormattedResults {
@@ -30,11 +37,21 @@ interface FormattedResults {
     rewardPoints: string;
     rewardAmount: string;
     rrRatio: string;
+    product: string;
+    sizingMode: string;
+    riskQuantity: string;
+    marginQuantity: string;
+    availableMargin: string;
+    marginPerUnit: string;
+    requiredMargin: string;
+    remainingMargin: string;
+    exposure: string;
+    limitingFactor: string;
 }
 
 interface Results {
     error?: string;
-    formatted: FormattedResults;
+    formatted?: FormattedResults;
 }
 
 interface Params {
@@ -45,6 +62,11 @@ interface Params {
     stopLossPrice?: number;
     targetPrice?: number;
     riskRewardRatio?: number;
+    product?: Product;
+    sizingMode?: SizingMode;
+    availableMargin?: number;
+    marginPerUnit?: number;
+    leverage?: number;
     showTarget?: boolean;
 }
 
@@ -67,6 +89,11 @@ interface SettingsUpdate {
     side: Side;
     entryPrice: number;
     stopLossPrice: number;
+    product: Product;
+    sizingMode: SizingMode;
+    availableMargin: number;
+    marginPerUnit: number;
+    leverage: number;
     showTarget: boolean;
     targetPrice?: number;
     riskRewardRatio?: number;
@@ -92,6 +119,8 @@ const RiskCalculatorPanel: FC<RiskCalculatorPanelProps> = ({
     ltp = 0,
     draggable = false
 }) => {
+    const formatted = results?.formatted ?? null;
+
     // Edit mode: show when there's an error or initially
     const [editMode, setEditMode] = useState(!results || !!results.error);
     const [minimized, setMinimized] = useState(false);
@@ -108,6 +137,11 @@ const RiskCalculatorPanel: FC<RiskCalculatorPanelProps> = ({
         stopLossPrice: params?.stopLossPrice || 0,
         targetPrice: params?.targetPrice || 0,
         riskRewardRatio: params?.riskRewardRatio || 2,
+        product: params?.product || 'MIS',
+        sizingMode: params?.sizingMode || 'cash',
+        availableMargin: params?.availableMargin || 0,
+        marginPerUnit: params?.marginPerUnit || 0,
+        leverage: params?.leverage || 5,
     });
 
     // Validation state
@@ -248,6 +282,11 @@ const RiskCalculatorPanel: FC<RiskCalculatorPanelProps> = ({
                 side: formValues.side,
                 entryPrice: Number(formValues.entryPrice),
                 stopLossPrice: Number(formValues.stopLossPrice),
+                product: formValues.product,
+                sizingMode: formValues.sizingMode,
+                availableMargin: Number(formValues.availableMargin),
+                marginPerUnit: Number(formValues.marginPerUnit),
+                leverage: Number(formValues.leverage),
                 showTarget: true
             };
 
@@ -414,6 +453,22 @@ const RiskCalculatorPanel: FC<RiskCalculatorPanelProps> = ({
                         </>
                     ))}
 
+                    {renderValidatedSelect('product', 'Product', (
+                        <>
+                            <option value="MIS">MIS</option>
+                            <option value="CNC">CNC</option>
+                            <option value="NRML">NRML</option>
+                        </>
+                    ))}
+
+                    {renderValidatedSelect('sizingMode', 'Sizing Mode', (
+                        <>
+                            <option value="cash">Cash</option>
+                            <option value="marginPerUnit">Margin / Share</option>
+                            <option value="leverage">Leverage</option>
+                        </>
+                    ))}
+
                     {/* Entry Price Input */}
                     <div className={styles.inputGroup}>
                         <label>Entry Price</label>
@@ -455,6 +510,17 @@ const RiskCalculatorPanel: FC<RiskCalculatorPanelProps> = ({
                     {/* Target Price Input */}
                     {renderValidatedInput('targetPrice', 'Target Price (optional)', 'number', { min: '0', step: '0.01', placeholder: 'Leave empty for auto-calc' })}
 
+                    {/* Margin Inputs */}
+                    {renderValidatedInput('availableMargin', 'Available Margin (₹)', 'number', { min: '0', step: '1', placeholder: 'Defaults to capital if empty' })}
+
+                    {formValues.sizingMode === 'marginPerUnit' && (
+                        renderValidatedInput('marginPerUnit', 'Margin / Share (₹)', 'number', { min: '0', step: '0.01' })
+                    )}
+
+                    {formValues.sizingMode === 'leverage' && (
+                        renderValidatedInput('leverage', 'Leverage (x)', 'number', { min: '1', step: '0.1' })
+                    )}
+
                     {/* Risk:Reward Ratio Select - only if no target price */}
                     {(!formValues.targetPrice || Number(formValues.targetPrice) <= 0) && renderValidatedSelect('riskRewardRatio', 'Risk : Reward', (
                         <>
@@ -489,7 +555,7 @@ const RiskCalculatorPanel: FC<RiskCalculatorPanelProps> = ({
                 style={draggable ? { left: `${position.x}px`, top: `${position.y}px`, position: 'fixed' } : {}}
                 onMouseDown={handleMouseDown}
             >
-                <span>Qty: {results?.formatted.quantity}</span>
+                <span>Qty: {formatted?.quantity || '--'}</span>
                 <button onClick={() => setMinimized(false)} className={styles.iconButton}>
                     <Maximize2 size={14} />
                 </button>
@@ -519,19 +585,25 @@ const RiskCalculatorPanel: FC<RiskCalculatorPanelProps> = ({
             </div>
 
             <div className={styles.content}>
+                {!formatted && (
+                    <div className={styles.errorMessage}>
+                        {results?.error || 'Risk calculator results are not available yet.'}
+                    </div>
+                )}
+
                 {/* Capital & Risk Section */}
                 <div className={styles.section}>
                     <div className={styles.row}>
                         <span className={styles.label}>Capital:</span>
-                        <span className={styles.value}>{results?.formatted.capital}</span>
+                        <span className={styles.value}>{formatted?.capital || '--'}</span>
                     </div>
                     <div className={styles.row}>
                         <span className={styles.label}>Risk %:</span>
-                        <span className={styles.value}>{results?.formatted.riskPercent}</span>
+                        <span className={styles.value}>{formatted?.riskPercent || '--'}</span>
                     </div>
                     <div className={styles.row}>
                         <span className={styles.label}>Risk Amount:</span>
-                        <span className={`${styles.value} ${styles.risk}`}>{results?.formatted.riskAmount}</span>
+                        <span className={`${styles.value} ${styles.risk}`}>{formatted?.riskAmount || '--'}</span>
                     </div>
                 </div>
 
@@ -539,15 +611,15 @@ const RiskCalculatorPanel: FC<RiskCalculatorPanelProps> = ({
                 <div className={styles.section}>
                     <div className={styles.row}>
                         <span className={styles.label}>Entry:</span>
-                        <span className={`${styles.value} ${styles.entry}`}>{results?.formatted.entryPrice}</span>
+                        <span className={`${styles.value} ${styles.entry}`}>{formatted?.entryPrice || '--'}</span>
                     </div>
                     <div className={styles.row}>
                         <span className={styles.label}>Stop Loss:</span>
-                        <span className={`${styles.value} ${styles.stopLoss}`}>{results?.formatted.stopLossPrice}</span>
+                        <span className={`${styles.value} ${styles.stopLoss}`}>{formatted?.stopLossPrice || '--'}</span>
                     </div>
                     <div className={styles.row}>
                         <span className={styles.label}>SL Points:</span>
-                        <span className={styles.value}>{results?.formatted.slPoints}</span>
+                        <span className={styles.value}>{formatted?.slPoints || '--'}</span>
                     </div>
                 </div>
 
@@ -555,11 +627,54 @@ const RiskCalculatorPanel: FC<RiskCalculatorPanelProps> = ({
                 <div className={styles.section}>
                     <div className={styles.row}>
                         <span className={styles.label}>✓ Quantity:</span>
-                        <span className={`${styles.value} ${styles.quantity}`}>{results?.formatted.quantity} shares</span>
+                        <span className={`${styles.value} ${styles.quantity}`}>{formatted?.quantity ? `${formatted.quantity} shares` : '--'}</span>
+                    </div>
+                    <div className={styles.row}>
+                        <span className={styles.label}>Risk Qty:</span>
+                        <span className={styles.value}>{formatted?.riskQuantity || '--'}</span>
+                    </div>
+                    <div className={styles.row}>
+                        <span className={styles.label}>Margin Qty:</span>
+                        <span className={styles.value}>{formatted?.marginQuantity || '--'}</span>
+                    </div>
+                    <div className={styles.row}>
+                        <span className={styles.label}>Limiter:</span>
+                        <span className={styles.value}>{formatted?.limitingFactor || '--'}</span>
                     </div>
                     <div className={styles.row}>
                         <span className={styles.label}>Position Value:</span>
-                        <span className={styles.value}>{results?.formatted.positionValue}</span>
+                        <span className={styles.value}>{formatted?.positionValue || '--'}</span>
+                    </div>
+                </div>
+
+                <div className={styles.section}>
+                    <div className={styles.row}>
+                        <span className={styles.label}>Product:</span>
+                        <span className={styles.value}>{formatted?.product || '--'}</span>
+                    </div>
+                    <div className={styles.row}>
+                        <span className={styles.label}>Sizing Mode:</span>
+                        <span className={styles.value}>{formatted?.sizingMode || '--'}</span>
+                    </div>
+                    <div className={styles.row}>
+                        <span className={styles.label}>Available Margin:</span>
+                        <span className={styles.value}>{formatted?.availableMargin || '--'}</span>
+                    </div>
+                    <div className={styles.row}>
+                        <span className={styles.label}>Margin / Share:</span>
+                        <span className={styles.value}>{formatted?.marginPerUnit || '--'}</span>
+                    </div>
+                    <div className={styles.row}>
+                        <span className={styles.label}>Required Margin:</span>
+                        <span className={styles.value}>{formatted?.requiredMargin || '--'}</span>
+                    </div>
+                    <div className={styles.row}>
+                        <span className={styles.label}>Remaining Margin:</span>
+                        <span className={styles.value}>{formatted?.remainingMargin || '--'}</span>
+                    </div>
+                    <div className={styles.row}>
+                        <span className={styles.label}>Exposure:</span>
+                        <span className={styles.value}>{formatted?.exposure || '--'}</span>
                     </div>
                 </div>
 
@@ -568,15 +683,15 @@ const RiskCalculatorPanel: FC<RiskCalculatorPanelProps> = ({
                     <div className={styles.section}>
                         <div className={styles.row}>
                             <span className={styles.label}>Target:</span>
-                            <span className={`${styles.value} ${styles.target}`}>{results?.formatted.targetPrice}</span>
+                            <span className={`${styles.value} ${styles.target}`}>{formatted?.targetPrice || '--'}</span>
                         </div>
                         <div className={styles.row}>
                             <span className={styles.label}>Reward Points:</span>
-                            <span className={styles.value}>{results?.formatted.rewardPoints}</span>
+                            <span className={styles.value}>{formatted?.rewardPoints || '--'}</span>
                         </div>
                         <div className={styles.row}>
                             <span className={styles.label}>Reward Amount:</span>
-                            <span className={`${styles.value} ${styles.reward}`}>{results?.formatted.rewardAmount}</span>
+                            <span className={`${styles.value} ${styles.reward}`}>{formatted?.rewardAmount || '--'}</span>
                         </div>
                     </div>
                 )}
@@ -585,7 +700,7 @@ const RiskCalculatorPanel: FC<RiskCalculatorPanelProps> = ({
                 <div className={styles.section}>
                     <div className={styles.row}>
                         <span className={styles.label}>Risk : Reward</span>
-                        <span className={`${styles.value} ${styles.rrRatio}`}>{results?.formatted.rrRatio}</span>
+                        <span className={`${styles.value} ${styles.rrRatio}`}>{formatted?.rrRatio || '--'}</span>
                     </div>
                 </div>
             </div>

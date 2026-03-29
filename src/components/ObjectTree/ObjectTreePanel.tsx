@@ -83,6 +83,12 @@ interface Indicator {
     settings?: IndicatorSettings;
 }
 
+interface Tool {
+    id?: string;
+    type: string;
+    visible?: boolean;
+}
+
 interface Drawing {
     id?: string;
     type: string;
@@ -92,10 +98,14 @@ interface Drawing {
 
 export interface ObjectTreePanelProps {
     indicators?: Indicator[];
+    tools?: Tool[];
     drawings?: Drawing[];
     onIndicatorVisibilityToggle?: (id: string) => void;
     onIndicatorRemove?: (id: string) => void;
     onIndicatorSettings?: (id: string) => void;
+    onToolVisibilityToggle?: (id: string) => void;
+    onToolRemove?: (id: string) => void;
+    onToolSettings?: (id: string) => void;
     onDrawingVisibilityToggle?: (index: number) => void;
     onDrawingLockToggle?: (index: number) => void;
     onDrawingRemove?: (index: number) => void;
@@ -105,10 +115,14 @@ export interface ObjectTreePanelProps {
 
 const ObjectTreePanel: React.FC<ObjectTreePanelProps> = ({
     indicators = [],
+    tools = [],
     drawings = [],
     onIndicatorVisibilityToggle,
     onIndicatorRemove,
     onIndicatorSettings,
+    onToolVisibilityToggle,
+    onToolRemove,
+    onToolSettings,
     onDrawingVisibilityToggle,
     onDrawingLockToggle,
     onDrawingRemove,
@@ -116,10 +130,12 @@ const ObjectTreePanel: React.FC<ObjectTreePanelProps> = ({
     interval
 }) => {
     const [indicatorsExpanded, setIndicatorsExpanded] = useState(true);
+    const [toolsExpanded, setToolsExpanded] = useState(true);
     const [drawingsExpanded, setDrawingsExpanded] = useState(true);
 
     // Defensive: ensure we always have arrays
     const safeIndicators = Array.isArray(indicators) ? indicators : [];
+    const safeTools = Array.isArray(tools) ? tools : [];
     const safeDrawings = Array.isArray(drawings) ? drawings : [];
 
     // Format indicator name for display
@@ -172,6 +188,11 @@ const ObjectTreePanel: React.FC<ObjectTreePanelProps> = ({
     const getDrawingIcon = (type?: string): IconComponent => {
         const IconComponent = DRAWING_ICONS[type || ''] || DRAWING_ICONS.default;
         return IconComponent;
+    };
+
+    const formatToolName = (tool: Tool): string => {
+        if (tool.type === 'riskCalculator') return 'Risk Calculator';
+        return tool.type || 'Tool';
     };
 
     return (
@@ -232,6 +253,66 @@ const ObjectTreePanel: React.FC<ObjectTreePanelProps> = ({
                                             <button
                                                 className={`${styles.actionBtn} ${styles.deleteBtn}`}
                                                 onClick={() => onIndicatorRemove?.(indicator.id || indicator.type)}
+                                                title="Remove"
+                                            >
+                                                <Trash2 size={14} />
+                                            </button>
+                                        </div>
+                                    </div>
+                                );
+                            })
+                        )}
+                    </div>
+                )}
+            </div>
+
+            {/* Tools Section */}
+            <div className={styles.section}>
+                <div
+                    className={styles.sectionHeader}
+                    onClick={() => setToolsExpanded(!toolsExpanded)}
+                >
+                    {toolsExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                    <span>Tools ({safeTools.length})</span>
+                </div>
+
+                {toolsExpanded && (
+                    <div className={styles.itemList}>
+                        {safeTools.length === 0 ? (
+                            <div className={styles.emptyMessage}>No tools added</div>
+                        ) : (
+                            safeTools.map((tool, idx) => {
+                                const isVisible = tool.visible !== false;
+
+                                return (
+                                    <div
+                                        key={tool.id || `tool-${idx}`}
+                                        className={`${styles.item} ${!isVisible ? styles.itemHidden : ''}`}
+                                    >
+                                        <div className={styles.itemInfo}>
+                                            <BarChart3 size={14} className={styles.itemIcon} />
+                                            <span className={styles.itemName}>
+                                                {formatToolName(tool)}
+                                            </span>
+                                        </div>
+                                        <div className={styles.itemActions}>
+                                            <button
+                                                className={styles.actionBtn}
+                                                onClick={() => onToolSettings?.(tool.id || tool.type)}
+                                                title="Settings"
+                                            >
+                                                <Settings size={14} />
+                                            </button>
+                                            <button
+                                                className={`${styles.actionBtn} ${!isVisible ? styles.actionBtnActive : ''}`}
+                                                onClick={() => onToolVisibilityToggle?.(tool.id || tool.type)}
+                                                title={isVisible ? 'Hide' : 'Show'}
+                                            >
+                                                {isVisible ? <Eye size={14} /> : <EyeOff size={14} />}
+                                            </button>
+                                            <button
+                                                className={`${styles.actionBtn} ${styles.deleteBtn}`}
+                                                onClick={() => onToolRemove?.(tool.id || tool.type)}
                                                 title="Remove"
                                             >
                                                 <Trash2 size={14} />

@@ -89,6 +89,7 @@ interface ChartComponentProps {
     interval?: string;
     chartType?: string;
     indicators?: any[];
+    tools?: any[];
     activeTool?: string | null;
     onToolUsed?: () => void;
     isLogScale?: boolean;
@@ -110,6 +111,9 @@ interface ChartComponentProps {
     onIndicatorRemove?: (id: string) => void;
     onIndicatorVisibilityToggle?: (id: string) => void;
     onIndicatorSettings?: (id: string, settings: any) => void;
+    onToolRemove?: (id: string) => void;
+    onToolVisibilityToggle?: (id: string) => void;
+    onToolSettings?: (id: string, settings: any) => void;
     chartAppearance?: any;
     strategyConfig?: any;
     onOpenOptionChain?: (symbol: string) => void;
@@ -134,6 +138,43 @@ const getTimeValue = (t) => {
     return 0; // Invalid or unknown format
 };
 
+const getCPRPeriodKey = (timestamp: number, timeframe: 'daily' | 'weekly' | 'monthly' = 'daily') => {
+    const date = new Date(timestamp * 1000);
+
+    if (timeframe === 'monthly') {
+        return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
+    }
+
+    if (timeframe === 'weekly') {
+        const weekStart = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+        const day = weekStart.getUTCDay();
+        const diffToMonday = day === 0 ? -6 : 1 - day;
+        weekStart.setUTCDate(weekStart.getUTCDate() + diffToMonday);
+        return weekStart.toISOString().slice(0, 10);
+    }
+
+    return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
+};
+
+const buildCPRPeriods = (data: any[], timeframe: 'daily' | 'weekly' | 'monthly' = 'daily') => {
+    const periodMap = new Map();
+
+    for (const bar of data) {
+        const key = getCPRPeriodKey(bar.time, timeframe);
+        if (!periodMap.has(key)) {
+            periodMap.set(key, { h: bar.high, l: bar.low, c: bar.close, candles: [bar] });
+        } else {
+            const entry = periodMap.get(key);
+            if (bar.high > entry.h) entry.h = bar.high;
+            if (bar.low < entry.l) entry.l = bar.low;
+            entry.c = bar.close;
+            entry.candles.push(bar);
+        }
+    }
+
+    return Array.from(periodMap.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+};
+
 const ChartComponent = forwardRef<any, ChartComponentProps>(({
     data: initialData = [],
     symbol = 'RELIANCE',
@@ -141,6 +182,7 @@ const ChartComponent = forwardRef<any, ChartComponentProps>(({
     interval,
     chartType,
     indicators,
+    tools = [],
     activeTool,
     onToolUsed,
     isLogScale,
@@ -162,6 +204,9 @@ const ChartComponent = forwardRef<any, ChartComponentProps>(({
     onIndicatorRemove,
     onIndicatorVisibilityToggle,
     onIndicatorSettings, // Callback when indicator settings are changed
+    onToolRemove,
+    onToolVisibilityToggle,
+    onToolSettings,
     chartAppearance = {},
     strategyConfig = null, // { strategyType, legs: [{ id, symbol, direction, quantity }], exchange, displayName }
     onOpenOptionChain, // Callback to open option chain for current symbol
@@ -553,6 +598,10 @@ const ChartComponent = forwardRef<any, ChartComponentProps>(({
 
     // Risk Calculator State
     const [riskCalculatorResults, setRiskCalculatorResults] = useState(null);
+    const [riskCalculatorRuntimePrices, setRiskCalculatorRuntimePrices] = useState(null);
+    const riskCalculatorIndicatorRef = useRef(null);
+    const riskCalculatorRuntimePricesRef = useRef(null);
+    const onToolSettingsRef = useRef(onToolSettings || onIndicatorSettings);
 
     const [panePositions, setPanePositions] = useState({}); // Tracks vertical position of each indicator pane
     const indicatorDropdownRef = useRef(null);
@@ -560,6 +609,44 @@ const ChartComponent = forwardRef<any, ChartComponentProps>(({
     useEffect(() => {
         chartTypeRef.current = chartType;
     }, [chartType]);
+
+    useEffect(() => {
+        onToolSettingsRef.current = onToolSettings || onIndicatorSettings;
+    }, [onToolSettings, onIndicatorSettings]);
+
+    useEffect(() => {
+        const riskCalcInd = tools?.find(ind => ind.type === 'riskCalculator') || indicators?.find(ind => ind.type === 'riskCalculator');
+        riskCalculatorIndicatorRef.current = riskCalcInd || null;
+        if (!riskCalcInd) {
+            setRiskCalculatorRuntimePrices(null);
+            return;
+        }
+
+        setRiskCalculatorRuntimePrices((prev: any) => {
+            const next = {
+                id: riskCalcInd.id,
+                entryPrice: riskCalcInd.entryPrice ?? null,
+                stopLossPrice: riskCalcInd.stopLossPrice ?? null,
+                targetPrice: riskCalcInd.targetPrice ?? null,
+            };
+
+            if (
+                prev &&
+                prev.id === next.id &&
+                prev.entryPrice === next.entryPrice &&
+                prev.stopLossPrice === next.stopLossPrice &&
+                prev.targetPrice === next.targetPrice
+            ) {
+                return prev;
+            }
+
+            return next;
+        });
+    }, [tools]);
+
+    useEffect(() => {
+        riskCalculatorRuntimePricesRef.current = riskCalculatorRuntimePrices;
+    }, [riskCalculatorRuntimePrices]);
 
     // Expose undo/redo and line tool manager to parent
     useImperativeHandle(ref, () => ({
@@ -1265,7 +1352,8 @@ const ChartComponent = forwardRef<any, ChartComponentProps>(({
         const handleKeyDown = (e) => {
             if ((e.key === 'Alt' || e.altKey) && !isAltPressedRef.current) {
                 isAltPressedRef.current = true;
-                const riskCalcInd = indicators?.find(i => i.type === 'riskCalculator' && i.visible);
+                const riskCalcInd = tools?.find(i => i.type === 'riskCalculator' && i.visible)
+                    || indicators?.find(i => i.type === 'riskCalculator' && i.visible);
                 if (riskCalcInd && chartContainerRef.current) {
                     chartContainerRef.current.style.cursor = 'crosshair';
                 }
@@ -1288,7 +1376,7 @@ const ChartComponent = forwardRef<any, ChartComponentProps>(({
             window.removeEventListener('keydown', handleKeyDown);
             window.removeEventListener('keyup', handleKeyUp);
         };
-    }, [indicators]);
+    }, [tools]);
 
     // Alt+Click Risk Calculator Entry/SL Setter - chart click handler
     useEffect(() => {
@@ -1297,7 +1385,8 @@ const ChartComponent = forwardRef<any, ChartComponentProps>(({
         const handleAltClick = (event) => {
             if (!isAltPressedRef.current) return;
 
-            const riskCalcInd = indicators?.find(i => i.type === 'riskCalculator' && i.visible);
+            const riskCalcInd = tools?.find(i => i.type === 'riskCalculator' && i.visible)
+                || indicators?.find(i => i.type === 'riskCalculator' && i.visible);
             if (!riskCalcInd) return;
 
             event.preventDefault();
@@ -1348,9 +1437,9 @@ const ChartComponent = forwardRef<any, ChartComponentProps>(({
                     }
                 }
 
-                // Update indicator settings
-                if (onIndicatorSettings) {
-                    onIndicatorSettings(riskCalcInd.id, updates);
+                // Update tool settings
+                if (onToolSettings || onIndicatorSettings) {
+                    (onToolSettings || onIndicatorSettings)?.(riskCalcInd.id, updates);
                 }
             } catch (error) {
                 logger.error('Error setting price from Alt+Click:', error);
@@ -1363,7 +1452,7 @@ const ChartComponent = forwardRef<any, ChartComponentProps>(({
         return () => {
             container.removeEventListener('click', handleAltClick, true);
         };
-    }, [indicators, onIndicatorSettings, clickToSetMode]);
+    }, [tools, indicators, onToolSettings, onIndicatorSettings, clickToSetMode]);
 
     // Shift+Click Quick Measure Tool - chart click handler
     useEffect(() => {
@@ -3025,27 +3114,94 @@ const ChartComponent = forwardRef<any, ChartComponentProps>(({
 
     // Callback for when user drags risk calculator price lines
     const handleRiskCalculatorDrag = useCallback((lineType, newPrice) => {
-        const riskCalcInd = indicators.find(i => i.type === 'riskCalculator');
+        const riskCalcInd = (riskCalculatorIndicatorRef.current as any) || null;
         if (!riskCalcInd) return;
 
-        // ALWAYS preserve the current targetPrice to prevent recalculation
-        const updates: any = {
-            targetPrice: riskCalcInd.targetPrice || null
+        const baseRuntimePrices = (riskCalculatorRuntimePricesRef.current as any)?.id === riskCalcInd.id
+            ? riskCalculatorRuntimePricesRef.current as any
+            : {
+                id: riskCalcInd.id,
+                entryPrice: riskCalcInd.entryPrice ?? null,
+                stopLossPrice: riskCalcInd.stopLossPrice ?? null,
+                targetPrice: riskCalcInd.targetPrice ?? null,
+            };
+
+        const nextRuntimePrices = {
+            id: riskCalcInd.id,
+            entryPrice: lineType === 'entry' ? newPrice : (baseRuntimePrices.entryPrice ?? null),
+            stopLossPrice: lineType === 'stopLoss' ? newPrice : (baseRuntimePrices.stopLossPrice ?? null),
+            targetPrice: lineType === 'target' ? newPrice : (baseRuntimePrices.targetPrice ?? null),
         };
 
-        if (lineType === 'entry') {
-            updates.entryPrice = newPrice;
-        } else if (lineType === 'stopLoss') {
-            updates.stopLossPrice = newPrice;
-        } else if (lineType === 'target') {
-            updates.targetPrice = newPrice;
+        const currentLTP = dataRef.current.length > 0 ? dataRef.current[dataRef.current.length - 1]?.close : 0;
+        const nextParams = {
+            capital: riskCalcInd.capital || 100000,
+            riskPercent: riskCalcInd.riskPercent || 2,
+            entryPrice: nextRuntimePrices.entryPrice || currentLTP || 0,
+            stopLossPrice: nextRuntimePrices.stopLossPrice || 0,
+            targetPrice: nextRuntimePrices.targetPrice || null,
+            riskRewardRatio: riskCalcInd.riskRewardRatio || 2,
+            side: riskCalcInd.side || 'BUY',
+            product: riskCalcInd.product || 'MIS',
+            sizingMode: riskCalcInd.sizingMode || 'cash',
+            availableMargin: riskCalcInd.availableMargin || null,
+            marginPerUnit: riskCalcInd.marginPerUnit || null,
+            leverage: riskCalcInd.leverage || null,
+        };
+
+        const nextResults = calculateRiskPosition(nextParams);
+        if (!nextResults || !nextResults.success) {
+            logger.warn('[Risk Calculator] Ignoring invalid drag update', { lineType, newPrice, error: (nextResults as any)?.error });
+            return;
         }
 
-        // This triggers re-calculation through onIndicatorSettings
-        if (onIndicatorSettings) {
-            onIndicatorSettings(riskCalcInd.id, updates);
+        setRiskCalculatorRuntimePrices(nextRuntimePrices as any);
+        setRiskCalculatorResults(nextResults);
+
+        if (riskCalculatorPrimitiveRef.current) {
+            riskCalculatorPrimitiveRef.current.updateOptions({
+                side: riskCalcInd.side || 'BUY',
+                showTarget: riskCalcInd.showTarget !== false,
+                colors: {
+                    entry: riskCalcInd.entryColor || '#26a69a',
+                    stopLoss: riskCalcInd.stopLossColor || '#ef5350',
+                    target: riskCalcInd.targetColor || '#42a5f5',
+                },
+                lineWidth: riskCalcInd.lineWidth || 2,
+                onPriceChange: handleRiskCalculatorDrag,
+            });
+            riskCalculatorPrimitiveRef.current.updatePrices(
+                nextParams.entryPrice,
+                nextParams.stopLossPrice,
+                riskCalcInd.showTarget !== false ? nextResults.targetPrice : null
+            );
         }
-    }, [indicators, onIndicatorSettings]);
+
+        const updates: any = {
+            capital: riskCalcInd.capital || 100000,
+            riskPercent: riskCalcInd.riskPercent || 2,
+            side: riskCalcInd.side || 'BUY',
+            entryPrice: nextParams.entryPrice,
+            stopLossPrice: nextParams.stopLossPrice,
+            targetPrice: nextParams.targetPrice,
+            riskRewardRatio: riskCalcInd.riskRewardRatio || 2,
+            product: riskCalcInd.product || 'MIS',
+            sizingMode: riskCalcInd.sizingMode || 'cash',
+            availableMargin: riskCalcInd.availableMargin || null,
+            marginPerUnit: riskCalcInd.marginPerUnit || null,
+            leverage: riskCalcInd.leverage || null,
+            showTarget: riskCalcInd.showTarget !== false,
+            showPanel: riskCalcInd.showPanel !== false,
+            entryColor: riskCalcInd.entryColor || '#26a69a',
+            stopLossColor: riskCalcInd.stopLossColor || '#ef5350',
+            targetColor: riskCalcInd.targetColor || '#42a5f5',
+            lineWidth: riskCalcInd.lineWidth || 2,
+        };
+
+        if (onToolSettingsRef.current) {
+            onToolSettingsRef.current(riskCalcInd.id, updates);
+        }
+    }, []);
 
     const updateIndicators = useCallback((data, indicatorsArray) => {
         logger.debug('[DEBUG] updateIndicators CALLED');
@@ -3279,22 +3435,29 @@ const ChartComponent = forwardRef<any, ChartComponentProps>(({
         }
 
         // ==================== RISK CALCULATOR INDICATOR ====================
-        const riskCalculatorInd = indicatorsArray?.find(ind => ind.type === 'riskCalculator');
+        const riskCalculatorInd = tools?.find(ind => ind.type === 'riskCalculator')
+            || indicatorsArray?.find(ind => ind.type === 'riskCalculator');
         const riskCalculatorEnabled = riskCalculatorInd?.visible !== false;
 
         if (riskCalculatorEnabled && riskCalculatorInd && mainSeriesRef.current) {
             // Get current LTP for potential use
             const currentLTP = dataRef.current.length > 0 ? dataRef.current[dataRef.current.length - 1]?.close : 0;
+            const runtimePrices = riskCalculatorRuntimePrices?.id === riskCalculatorInd.id ? riskCalculatorRuntimePrices : null;
 
             // Calculate risk position based on indicator settings
             const params = {
                 capital: riskCalculatorInd.capital || 100000,
                 riskPercent: riskCalculatorInd.riskPercent || 2,
-                entryPrice: riskCalculatorInd.entryPrice || currentLTP || 0,
-                stopLossPrice: riskCalculatorInd.stopLossPrice || 0,
-                targetPrice: riskCalculatorInd.targetPrice || null,
+                entryPrice: (runtimePrices?.entryPrice ?? riskCalculatorInd.entryPrice) || currentLTP || 0,
+                stopLossPrice: (runtimePrices?.stopLossPrice ?? riskCalculatorInd.stopLossPrice) || 0,
+                targetPrice: (runtimePrices?.targetPrice ?? riskCalculatorInd.targetPrice) || null,
                 riskRewardRatio: riskCalculatorInd.riskRewardRatio || 2,
-                side: riskCalculatorInd.side || 'BUY'
+                side: riskCalculatorInd.side || 'BUY',
+                product: riskCalculatorInd.product || 'MIS',
+                sizingMode: riskCalculatorInd.sizingMode || 'cash',
+                availableMargin: riskCalculatorInd.availableMargin || null,
+                marginPerUnit: riskCalculatorInd.marginPerUnit || null,
+                leverage: riskCalculatorInd.leverage || null,
             };
 
             const results = calculateRiskPosition(params);
@@ -3302,36 +3465,53 @@ const ChartComponent = forwardRef<any, ChartComponentProps>(({
             // Update state for panel display
             setRiskCalculatorResults(results);
 
-            // Remove old primitive if exists
-            if (riskCalculatorPrimitiveRef.current) {
-                removeRiskCalculatorPrimitive({
-                    series: mainSeriesRef.current,
-                    primitiveRef: riskCalculatorPrimitiveRef
-                });
-            }
-
-            // Create new draggable primitive with updated prices
             if (results && results.success) {
-                riskCalculatorPrimitiveRef.current = createRiskCalculatorPrimitive({
-                    series: mainSeriesRef.current,
-                    results: {
-                        ...results,
-                        showTarget: riskCalculatorInd.showTarget !== false
-                    },
-                    settings: {
-                        entryColor: riskCalculatorInd.entryColor || '#26a69a',
-                        stopLossColor: riskCalculatorInd.stopLossColor || '#ef5350',
-                        targetColor: riskCalculatorInd.targetColor || '#42a5f5',
-                        lineWidth: riskCalculatorInd.lineWidth || 2
-                    },
-                    side: riskCalculatorInd.side || 'BUY',
-                    onPriceChange: handleRiskCalculatorDrag
-                });
+                const primitiveTargetPrice = riskCalculatorInd.showTarget !== false ? results.targetPrice : null;
+
+                if (riskCalculatorPrimitiveRef.current) {
+                    riskCalculatorPrimitiveRef.current.updateOptions({
+                        side: riskCalculatorInd.side || 'BUY',
+                        showTarget: riskCalculatorInd.showTarget !== false,
+                        colors: {
+                            entry: riskCalculatorInd.entryColor || '#26a69a',
+                            stopLoss: riskCalculatorInd.stopLossColor || '#ef5350',
+                            target: riskCalculatorInd.targetColor || '#42a5f5',
+                        },
+                        lineWidth: riskCalculatorInd.lineWidth || 2,
+                        onPriceChange: handleRiskCalculatorDrag,
+                    });
+                    riskCalculatorPrimitiveRef.current.updatePrices(
+                        params.entryPrice,
+                        params.stopLossPrice,
+                        primitiveTargetPrice
+                    );
+                } else {
+                    riskCalculatorPrimitiveRef.current = createRiskCalculatorPrimitive({
+                        series: mainSeriesRef.current,
+                        results: {
+                            ...results,
+                            showTarget: riskCalculatorInd.showTarget !== false
+                        },
+                        settings: {
+                            entryColor: riskCalculatorInd.entryColor || '#26a69a',
+                            stopLossColor: riskCalculatorInd.stopLossColor || '#ef5350',
+                            targetColor: riskCalculatorInd.targetColor || '#42a5f5',
+                            lineWidth: riskCalculatorInd.lineWidth || 2
+                        },
+                        side: riskCalculatorInd.side || 'BUY',
+                        onPriceChange: handleRiskCalculatorDrag
+                    });
+                }
 
                 // Track type for cleanup (primitive-based indicator)
                 if (riskCalculatorInd?.id) {
                     indicatorTypesMap.current.set(riskCalculatorInd.id, 'riskCalculator');
                 }
+            } else if (riskCalculatorPrimitiveRef.current) {
+                removeRiskCalculatorPrimitive({
+                    series: mainSeriesRef.current,
+                    primitiveRef: riskCalculatorPrimitiveRef
+                });
             }
         } else if (!riskCalculatorEnabled) {
             // Remove risk calculator primitive when disabled
@@ -3354,33 +3534,17 @@ const ChartComponent = forwardRef<any, ChartComponentProps>(({
             const tcColor     = cprInd.tcColor    || '#EF5350';
             const lineWidth   = cprInd.lineWidth  || 2;
             const lineStyle   = parseInt(cprInd.lineStyle ?? '0', 10);
-
-            // ── Group candles by date ──────────────────────────────────────────────
-            // data is already sorted by time (unix seconds)
-            const dayMap = new Map(); // date-string → { h, l, c, candles[] }
-            for (const bar of data) {
-                const d = new Date(bar.time * 1000);
-                const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
-                if (!dayMap.has(key)) dayMap.set(key, { h: bar.high, l: bar.low, c: bar.close, candles: [bar] });
-                else {
-                    const entry = dayMap.get(key);
-                    if (bar.high > entry.h) entry.h = bar.high;
-                    if (bar.low  < entry.l) entry.l = bar.low;
-                    entry.c = bar.close; // last candle = day close
-                    entry.candles.push(bar);
-                }
-            }
-
-            const sortedDays = Array.from(dayMap.entries()).sort((a, b) => a[0] < b[0] ? -1 : 1);
+            const timeframe = cprInd.timeframe || 'daily';
+            const sortedPeriods = buildCPRPeriods(data, timeframe);
 
             // ── Calculate CPR levels for each day using PREVIOUS day values ────────
             //   Pivot (P) = (Prev_H + Prev_L + Prev_C) / 3
             //   BC        = (Prev_H + Prev_L) / 2
             //   TC        = 2 * P - BC
             const cprDays = [];
-            for (let i = 1; i < sortedDays.length; i++) {
-                const [, prev] = sortedDays[i - 1];
-                const [, cur ]  = sortedDays[i];
+            for (let i = 1; i < sortedPeriods.length; i++) {
+                const [, prev] = sortedPeriods[i - 1];
+                const [, cur ]  = sortedPeriods[i];
 
                 const P  = (prev.h + prev.l + prev.c) / 3;
                 const BC = (prev.h + prev.l) / 2;
@@ -3926,8 +4090,8 @@ const ChartComponent = forwardRef<any, ChartComponentProps>(({
             refs.center.setData(validVwap);
             
             if (vwapBandsInd.showBand1 !== false) {
-                drawBand('upper1', res.upperBand1, b1color, 1);
-                drawBand('lower1', res.lowerBand1, b1color, 1);
+                drawBand('upper1', res.upperBand2, b1color, 1);
+                drawBand('lower1', res.lowerBand2, b1color, 1);
             } else {
                 if(refs.upper1) refs.upper1.setData([]);
                 if(refs.lower1) refs.lower1.setData([]);
@@ -3958,7 +4122,12 @@ const ChartComponent = forwardRef<any, ChartComponentProps>(({
         // --- UNIFIED CLEANUP LOGIC ---
         // Identify IDs that are no longer in the list
         const idsToRemove = [];
-        for (const id of indicatorSeriesMap.current.keys()) {
+        const trackedIds = new Set([
+            ...indicatorSeriesMap.current.keys(),
+            ...indicatorPanesMap.current.keys(),
+            ...indicatorTypesMap.current.keys(),
+        ]);
+        for (const id of trackedIds) {
             if (!validIds.has(id)) {
                 idsToRemove.push(id);
             }
@@ -4035,7 +4204,7 @@ const ChartComponent = forwardRef<any, ChartComponentProps>(({
             }
         }
 
-    }, []);
+    }, [handleRiskCalculatorDrag, riskCalculatorRuntimePrices, tools]);
 
     // --- VISUAL TRADING DATA SYNC ---
     useEffect(() => {
@@ -4150,7 +4319,7 @@ const ChartComponent = forwardRef<any, ChartComponentProps>(({
 
     // Separate effect for indicators to prevent data reload
     useEffect(() => {
-        logger.debug('[DEBUG] Indicators effect TRIGGERED. Count:', indicators?.length);
+        logger.debug('[DEBUG] Indicators effect TRIGGERED. Count:', indicators?.length, 'Tools:', tools?.length);
         logger.debug('[DEBUG] Indicator IDs:', indicators?.map(i => i.id));
 
         if (dataRef.current.length > 0) {
@@ -4161,7 +4330,7 @@ const ChartComponent = forwardRef<any, ChartComponentProps>(({
                 logger.error('Error updating indicators:', error);
             }
         }
-    }, [indicators, updateIndicators]);
+    }, [indicators, tools, updateIndicators]);
 
     // Track Pine indicator input hashes to detect changes
     const pineInputHashRef = useRef<Record<string, string>>({});
@@ -5810,10 +5979,12 @@ const ChartComponent = forwardRef<any, ChartComponentProps>(({
 
             {/* Risk Calculator Panel */}
             {(() => {
-                const riskCalcInd = indicators?.find(ind => ind.type === 'riskCalculator');
+                const riskCalcInd = tools?.find(ind => ind.type === 'riskCalculator')
+                    || indicators?.find(ind => ind.type === 'riskCalculator');
                 const shouldShow = riskCalcInd && riskCalcInd.visible !== false && (riskCalcInd.showPanel !== false);
 
                 if (!shouldShow || !riskCalculatorResults) return null;
+                const runtimePrices = riskCalculatorRuntimePrices?.id === riskCalcInd.id ? riskCalculatorRuntimePrices : null;
 
                 // Get current LTP for "Use LTP" button
                 const currentLTP = dataRef.current.length > 0 ? dataRef.current[dataRef.current.length - 1]?.close : 0;
@@ -5824,23 +5995,28 @@ const ChartComponent = forwardRef<any, ChartComponentProps>(({
                         params={{
                             capital: riskCalcInd.capital || 100000,
                             riskPercent: riskCalcInd.riskPercent || 2,
-                            entryPrice: riskCalcInd.entryPrice || 0,
-                            stopLossPrice: riskCalcInd.stopLossPrice || 0,
-                            targetPrice: riskCalcInd.targetPrice || 0,
+                            entryPrice: (runtimePrices?.entryPrice ?? riskCalcInd.entryPrice) || 0,
+                            stopLossPrice: (runtimePrices?.stopLossPrice ?? riskCalcInd.stopLossPrice) || 0,
+                            targetPrice: (runtimePrices?.targetPrice ?? riskCalcInd.targetPrice) || 0,
                             riskRewardRatio: riskCalcInd.riskRewardRatio || 2,
                             side: riskCalcInd.side || 'BUY',
+                            product: riskCalcInd.product || 'MIS',
+                            sizingMode: riskCalcInd.sizingMode || 'cash',
+                            availableMargin: riskCalcInd.availableMargin || 0,
+                            marginPerUnit: riskCalcInd.marginPerUnit || 0,
+                            leverage: riskCalcInd.leverage || 5,
                             showTarget: riskCalcInd.showTarget !== false
                         }}
                         onClose={() => {
                             // Toggle off the showPanel setting
-                            if (onIndicatorSettings && riskCalcInd.id) {
-                                onIndicatorSettings(riskCalcInd.id, { ...riskCalcInd, showPanel: false });
+                            if ((onToolSettings || onIndicatorSettings) && riskCalcInd.id) {
+                                (onToolSettings || onIndicatorSettings)?.(riskCalcInd.id, { ...riskCalcInd, showPanel: false });
                             }
                         }}
                         onUpdateSettings={(updates) => {
-                            // Update indicator settings when values change in panel
-                            if (onIndicatorSettings && riskCalcInd.id) {
-                                onIndicatorSettings(riskCalcInd.id, updates);
+                            // Update tool settings when values change in panel
+                            if ((onToolSettings || onIndicatorSettings) && riskCalcInd.id) {
+                                (onToolSettings || onIndicatorSettings)?.(riskCalcInd.id, updates);
                             }
                         }}
                         ltp={currentLTP}

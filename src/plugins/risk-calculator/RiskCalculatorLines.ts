@@ -162,6 +162,19 @@ export class RiskCalculatorLines implements ISeriesPrimitive<Time> {
     this.updateAllViews();
   }
 
+  updateOptions(options: Partial<RiskCalculatorOptions>): void {
+    this._options = {
+      ...this._options,
+      ...options,
+      colors: {
+        ...this._options.colors,
+        ...(options.colors || {}),
+      },
+      onPriceChange: options.onPriceChange || this._options.onPriceChange,
+    };
+    this.updateAllViews();
+  }
+
   private _createRendererData(): RendererData {
     if (!this._series || !this._chart) {
       return {

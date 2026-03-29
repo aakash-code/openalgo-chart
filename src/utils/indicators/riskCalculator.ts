@@ -10,6 +10,8 @@ import { formatCurrency } from '../shared/formatters';
  * Trade side type
  */
 export type TradeSide = 'BUY' | 'SELL';
+export type TradeProduct = 'MIS' | 'CNC' | 'NRML';
+export type RiskSizingMode = 'cash' | 'marginPerUnit' | 'leverage';
 
 /**
  * Risk calculation parameters
@@ -29,6 +31,16 @@ export interface RiskCalculationParams {
     riskRewardRatio?: number;
     /** Trade side: 'BUY' or 'SELL' */
     side: TradeSide;
+    /** Product type */
+    product?: TradeProduct;
+    /** Sizing mode for capital usage */
+    sizingMode?: RiskSizingMode;
+    /** Available margin/capital that can be deployed */
+    availableMargin?: number | null;
+    /** Exact blocked capital per share/unit */
+    marginPerUnit?: number | null;
+    /** Leverage multiplier used to derive margin per unit */
+    leverage?: number | null;
 }
 
 /**
@@ -47,6 +59,16 @@ export interface FormattedRiskResult {
     rewardPoints: string;
     rewardAmount: string;
     rrRatio: string;
+    product: string;
+    sizingMode: string;
+    riskQuantity: string;
+    marginQuantity: string;
+    availableMargin: string;
+    marginPerUnit: string;
+    requiredMargin: string;
+    remainingMargin: string;
+    exposure: string;
+    limitingFactor: string;
 }
 
 /**
@@ -57,11 +79,21 @@ export interface RiskCalculationSuccess {
     riskAmount: number;
     slPoints: number;
     quantity: number;
+    riskQuantity: number;
+    marginQuantity: number;
     positionValue: number;
+    exposure: number;
+    availableMargin: number;
+    marginPerUnit: number;
+    requiredMargin: number;
+    remainingMargin: number;
     targetPrice: number;
     rewardPoints: number;
     rewardAmount: number;
     riskRewardRatio: number;
+    product: TradeProduct;
+    sizingMode: RiskSizingMode;
+    limitingFactor: 'risk' | 'margin' | 'balanced';
     formatted: FormattedRiskResult;
     showTarget?: boolean;
 }
@@ -93,7 +125,12 @@ export function calculateRiskPosition(params: RiskCalculationParams): RiskCalcul
         stopLossPrice,
         targetPrice = null,
         riskRewardRatio = 2,
-        side
+        side,
+        product = 'MIS',
+        sizingMode = 'cash',
+        availableMargin = null,
+        marginPerUnit = null,
+        leverage = null,
     } = params;
 
     // Validation: Check required fields
@@ -138,16 +175,46 @@ export function calculateRiskPosition(params: RiskCalculationParams): RiskCalcul
         return { error: 'For SELL: Entry must be below Stop Loss' };
     }
 
-    // Step 3: Calculate quantity
-    const quantity = Math.floor(riskAmount / slPoints);
+    const resolvedSizingMode: RiskSizingMode =
+        sizingMode === 'marginPerUnit' && marginPerUnit && marginPerUnit > 0
+            ? 'marginPerUnit'
+            : sizingMode === 'leverage' && leverage && leverage > 0
+                ? 'leverage'
+                : 'cash';
+
+    const resolvedMarginPerUnit =
+        resolvedSizingMode === 'marginPerUnit'
+            ? marginPerUnit!
+            : resolvedSizingMode === 'leverage'
+                ? entryPrice / leverage!
+                : entryPrice;
+
+    if (!resolvedMarginPerUnit || resolvedMarginPerUnit <= 0) {
+        return { error: 'Margin per unit must be greater than 0' };
+    }
+
+    const effectiveAvailableMargin =
+        availableMargin && availableMargin > 0 ? availableMargin : capital;
+
+    const riskQuantity = Math.floor(riskAmount / slPoints);
+    const marginQuantity = Math.floor(effectiveAvailableMargin / resolvedMarginPerUnit);
+    const quantity = Math.min(riskQuantity, marginQuantity);
 
     // Check if quantity is valid
     if (quantity <= 0) {
+        if (marginQuantity <= 0) {
+            return { error: 'Available margin is too low for even 1 quantity' };
+        }
         return { error: 'Calculated quantity is 0. Increase capital or risk %' };
     }
 
-    // Step 4: Calculate position value
+    // Step 4: Calculate position value and margin usage
     const positionValue = quantity * entryPrice;
+    const exposure = positionValue;
+    const requiredMargin = quantity * resolvedMarginPerUnit;
+    const remainingMargin = Math.max(0, effectiveAvailableMargin - requiredMargin);
+    const limitingFactor: 'risk' | 'margin' | 'balanced' =
+        riskQuantity < marginQuantity ? 'risk' : riskQuantity > marginQuantity ? 'margin' : 'balanced';
 
     // Step 5: Calculate target price OR R:R ratio
     let finalTargetPrice: number;
@@ -190,11 +257,21 @@ export function calculateRiskPosition(params: RiskCalculationParams): RiskCalcul
         riskAmount,
         slPoints,
         quantity,
+        riskQuantity,
+        marginQuantity,
         positionValue,
+        exposure,
+        availableMargin: effectiveAvailableMargin,
+        marginPerUnit: resolvedMarginPerUnit,
+        requiredMargin,
+        remainingMargin,
         targetPrice: finalTargetPrice,
         rewardPoints,
         rewardAmount,
         riskRewardRatio: finalRiskRewardRatio,
+        product,
+        sizingMode: resolvedSizingMode,
+        limitingFactor,
 
         // Formatted for display
         formatted: {
@@ -209,7 +286,21 @@ export function calculateRiskPosition(params: RiskCalculationParams): RiskCalcul
             targetPrice: formatCurrency(finalTargetPrice, { showSymbol: true }),
             rewardPoints: rewardPoints.toFixed(2),
             rewardAmount: formatCurrency(rewardAmount, { showSymbol: true }),
-            rrRatio: `1 : ${Number.isInteger(finalRiskRewardRatio) ? finalRiskRewardRatio : finalRiskRewardRatio.toFixed(2)}`
+            rrRatio: `1 : ${Number.isInteger(finalRiskRewardRatio) ? finalRiskRewardRatio : finalRiskRewardRatio.toFixed(2)}`,
+            product,
+            sizingMode: resolvedSizingMode,
+            riskQuantity: riskQuantity.toLocaleString('en-IN'),
+            marginQuantity: marginQuantity.toLocaleString('en-IN'),
+            availableMargin: formatCurrency(effectiveAvailableMargin, { showSymbol: true }),
+            marginPerUnit: formatCurrency(resolvedMarginPerUnit, { showSymbol: true }),
+            requiredMargin: formatCurrency(requiredMargin, { showSymbol: true }),
+            remainingMargin: formatCurrency(remainingMargin, { showSymbol: true }),
+            exposure: formatCurrency(exposure, { showSymbol: true }),
+            limitingFactor: limitingFactor === 'balanced'
+                ? 'Risk and Margin'
+                : limitingFactor === 'risk'
+                    ? 'Risk'
+                    : 'Margin',
         }
     };
 }
@@ -243,13 +334,29 @@ export function autoDetectSide(entryPrice: number, stopLossPrice: number): Trade
  * Validation parameters for risk calculator
  */
 export interface RiskValidationParams {
-    capital?: number;
-    riskPercent?: number;
-    entryPrice?: number;
-    stopLossPrice?: number;
-    targetPrice?: number;
+    capital?: number | string;
+    riskPercent?: number | string;
+    entryPrice?: number | string;
+    stopLossPrice?: number | string;
+    targetPrice?: number | string;
     side?: TradeSide;
 }
+
+const toValidNumber = (value: number | string | undefined): number | undefined => {
+    if (typeof value === 'number') {
+        return Number.isFinite(value) ? value : undefined;
+    }
+
+    if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (!trimmed) return undefined;
+
+        const parsed = Number(trimmed);
+        return Number.isFinite(parsed) ? parsed : undefined;
+    }
+
+    return undefined;
+};
 
 /**
  * Validation result
@@ -267,29 +374,33 @@ export interface RiskValidationResult {
  */
 export function validateRiskParams(params: RiskValidationParams): RiskValidationResult {
     const errors: string[] = [];
+    const capital = toValidNumber(params.capital);
+    const riskPercent = toValidNumber(params.riskPercent);
+    const entryPrice = toValidNumber(params.entryPrice);
+    const stopLossPrice = toValidNumber(params.stopLossPrice);
 
-    if (!params.capital || params.capital <= 0) {
+    if (!capital || capital <= 0) {
         errors.push('Capital must be greater than 0');
     }
 
-    if (!params.riskPercent || params.riskPercent <= 0 || params.riskPercent > 100) {
+    if (!riskPercent || riskPercent <= 0 || riskPercent > 100) {
         errors.push('Risk % must be between 0 and 100');
     }
 
-    if (!params.entryPrice || params.entryPrice <= 0) {
+    if (!entryPrice || entryPrice <= 0) {
         errors.push('Entry price must be greater than 0');
     }
 
-    if (!params.stopLossPrice || params.stopLossPrice <= 0) {
+    if (!stopLossPrice || stopLossPrice <= 0) {
         errors.push('Stop loss price must be greater than 0');
     }
 
-    if (params.entryPrice && params.stopLossPrice && params.side) {
-        if (params.side === 'BUY' && params.entryPrice <= params.stopLossPrice) {
+    if (entryPrice && stopLossPrice && params.side) {
+        if (params.side === 'BUY' && entryPrice <= stopLossPrice) {
             errors.push('For BUY: Entry must be above Stop Loss');
         }
 
-        if (params.side === 'SELL' && params.entryPrice >= params.stopLossPrice) {
+        if (params.side === 'SELL' && entryPrice >= stopLossPrice) {
             errors.push('For SELL: Entry must be below Stop Loss');
         }
     }
@@ -333,67 +444,72 @@ export interface DetailedValidationResult {
  */
 export function validateRiskParamsDetailed(params: RiskValidationParams): DetailedValidationResult {
     const errors: DetailedValidationErrors = {};
+    const capital = toValidNumber(params.capital);
+    const riskPercent = toValidNumber(params.riskPercent);
+    const entryPrice = toValidNumber(params.entryPrice);
+    const stopLossPrice = toValidNumber(params.stopLossPrice);
+    const targetPrice = toValidNumber(params.targetPrice);
 
     // Capital validation
-    if (!params.capital || params.capital <= 0) {
+    if (!capital || capital <= 0) {
         errors.capital = 'Capital must be greater than 0';
-    } else if (params.capital < 1000) {
+    } else if (capital < 1000) {
         errors.capital = 'Capital should be at least 1,000';
         errors.capitalLevel = 'warning';
     }
 
     // Risk percent validation
-    if (!params.riskPercent || params.riskPercent <= 0) {
+    if (!riskPercent || riskPercent <= 0) {
         errors.riskPercent = 'Risk % must be greater than 0';
-    } else if (params.riskPercent > 5) {
+    } else if (riskPercent > 100) {
+        errors.riskPercent = 'Risk % cannot exceed 100%';
+    } else if (riskPercent > 5) {
         errors.riskPercent = 'Risk > 5% is very aggressive';
         errors.riskPercentLevel = 'warning';
-    } else if (params.riskPercent > 100) {
-        errors.riskPercent = 'Risk % cannot exceed 100%';
     }
 
     // Entry price validation
-    if (!params.entryPrice || params.entryPrice <= 0) {
+    if (!entryPrice || entryPrice <= 0) {
         errors.entryPrice = 'Entry must be greater than 0';
     }
 
     // Stop loss validation
-    if (!params.stopLossPrice || params.stopLossPrice <= 0) {
+    if (!stopLossPrice || stopLossPrice <= 0) {
         errors.stopLossPrice = 'Stop loss must be greater than 0';
     }
 
     // Cross-field validation (entry vs stop loss)
-    if (params.entryPrice && params.stopLossPrice && params.entryPrice > 0 && params.stopLossPrice > 0) {
-        if (params.entryPrice === params.stopLossPrice) {
+    if (entryPrice && stopLossPrice && entryPrice > 0 && stopLossPrice > 0) {
+        if (entryPrice === stopLossPrice) {
             errors.stopLossPrice = 'Stop loss must differ from entry';
             errors.entryPrice = 'Entry must differ from stop loss';
         } else {
             const side = params.side || 'BUY';
 
-            if (side === 'BUY' && params.stopLossPrice >= params.entryPrice) {
-                errors.stopLossPrice = `For BUY, stop loss must be below entry (< ${params.entryPrice.toFixed(2)})`;
-                errors.stopLossSuggestion = Math.max(0.01, params.entryPrice * 0.98).toFixed(2);
+            if (side === 'BUY' && stopLossPrice >= entryPrice) {
+                errors.stopLossPrice = `For BUY, stop loss must be below entry (< ${entryPrice.toFixed(2)})`;
+                errors.stopLossSuggestion = Math.max(0.01, entryPrice * 0.98).toFixed(2);
             }
 
-            if (side === 'SELL' && params.stopLossPrice <= params.entryPrice) {
-                errors.stopLossPrice = `For SELL, stop loss must be above entry (> ${params.entryPrice.toFixed(2)})`;
-                errors.stopLossSuggestion = (params.entryPrice * 1.02).toFixed(2);
+            if (side === 'SELL' && stopLossPrice <= entryPrice) {
+                errors.stopLossPrice = `For SELL, stop loss must be above entry (> ${entryPrice.toFixed(2)})`;
+                errors.stopLossSuggestion = (entryPrice * 1.02).toFixed(2);
             }
         }
     }
 
     // Target validation (if provided)
-    if (params.targetPrice && params.targetPrice > 0 && params.entryPrice && params.entryPrice > 0) {
+    if (targetPrice && targetPrice > 0 && entryPrice && entryPrice > 0) {
         const side = params.side || 'BUY';
 
-        if (side === 'BUY' && params.targetPrice <= params.entryPrice) {
-            errors.targetPrice = `For BUY, target must be above entry (> ${params.entryPrice.toFixed(2)})`;
-            errors.targetSuggestion = (params.entryPrice * 1.02).toFixed(2);
+        if (side === 'BUY' && targetPrice <= entryPrice) {
+            errors.targetPrice = `For BUY, target must be above entry (> ${entryPrice.toFixed(2)})`;
+            errors.targetSuggestion = (entryPrice * 1.02).toFixed(2);
         }
 
-        if (side === 'SELL' && params.targetPrice >= params.entryPrice) {
-            errors.targetPrice = `For SELL, target must be below entry (< ${params.entryPrice.toFixed(2)})`;
-            errors.targetSuggestion = Math.max(0.01, params.entryPrice * 0.98).toFixed(2);
+        if (side === 'SELL' && targetPrice >= entryPrice) {
+            errors.targetPrice = `For SELL, target must be below entry (< ${entryPrice.toFixed(2)})`;
+            errors.targetSuggestion = Math.max(0.01, entryPrice * 0.98).toFixed(2);
         }
     }
 

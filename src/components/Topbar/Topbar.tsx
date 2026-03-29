@@ -51,6 +51,7 @@ export interface TopbarProps {
     interval: string;
     chartType: string;
     indicators: unknown[];
+    tools?: unknown[];
     favoriteIntervals: string[];
     customIntervals: CustomInterval[];
     lastNonFavoriteInterval?: string;
@@ -86,12 +87,13 @@ export interface TopbarProps {
     onOptionsClick?: () => void;
     onHeatmapClick?: () => void;
     onAddIndicator?: (indicator: string) => void;
+    onAddTool?: (tool: string) => void;
     onPineEditorClick?: () => void;
     isPineEditorOpen?: boolean;
 }
 
 const Topbar: React.FC<TopbarProps> = ({
-    symbol, interval, chartType, indicators, favoriteIntervals, customIntervals,
+    symbol, interval, chartType, indicators, tools = [], favoriteIntervals, customIntervals,
     lastNonFavoriteInterval,
     onSymbolClick, onIntervalChange, onChartTypeChange, onToggleIndicator,
     onToggleFavorite, onAddCustomInterval, onRemoveCustomInterval,
@@ -100,11 +102,12 @@ const Topbar: React.FC<TopbarProps> = ({
     layout, onLayoutChange, onSaveLayout, onAlertClick, onIndicatorAlertClick, onCompareClick, onReplayClick,
     isReplayMode = false, onSettingsClick, onTemplatesClick, onChartTemplatesClick,
     onStraddleClick, onAutoSpreadClick, strategyConfig = null,
-    onOptionsClick, onHeatmapClick, onAddIndicator,
+    onOptionsClick, onHeatmapClick, onAddIndicator, onAddTool,
     onPineEditorClick, isPineEditorOpen = false
 }) => {
 
     const [showIndicators, setShowIndicators] = useState(false);
+    const [showTools, setShowTools] = useState(false);
     const [showTimeframes, setShowTimeframes] = useState(false);
     const [showChartTypes, setShowChartTypes] = useState(false);
     const [showSnapshotMenu, setShowSnapshotMenu] = useState(false);
@@ -139,6 +142,7 @@ const Topbar: React.FC<TopbarProps> = ({
     const timeframeRef = useRef<HTMLDivElement>(null);
     const chartTypeRef = useRef<HTMLDivElement>(null);
     const indicatorRef = useRef<HTMLDivElement>(null);
+    const toolsRef = useRef<HTMLDivElement>(null);
     const snapshotRef = useRef<HTMLDivElement>(null);
     const layoutRef = useRef<HTMLDivElement>(null);
 
@@ -322,6 +326,7 @@ const Topbar: React.FC<TopbarProps> = ({
     const [timeframePos, setTimeframePos] = useState<DropdownPosition>({ top: 0, left: 0 });
     const [chartTypePos, setChartTypePos] = useState<DropdownPosition>({ top: 0, left: 0 });
     const [indicatorPos, setIndicatorPos] = useState<DropdownPosition>({ top: 0, left: 0 });
+    const [toolsPos, setToolsPos] = useState<DropdownPosition>({ top: 0, left: 0 });
     const [snapshotPos, setSnapshotPos] = useState<SnapshotPosition>({ top: 0, right: 0 });
     const [layoutPos, setLayoutPos] = useState<DropdownPosition>({ top: 0, left: 0 });
 
@@ -355,6 +360,7 @@ const Topbar: React.FC<TopbarProps> = ({
         setShowTimeframes(!showTimeframes);
         setShowChartTypes(false);
         setShowIndicators(false);
+        setShowTools(false);
     };
 
     const toggleChartTypes = (): void => {
@@ -364,6 +370,7 @@ const Topbar: React.FC<TopbarProps> = ({
         setShowChartTypes(!showChartTypes);
         setShowTimeframes(false);
         setShowIndicators(false);
+        setShowTools(false);
     };
 
     const toggleIndicators = (): void => {
@@ -371,6 +378,18 @@ const Topbar: React.FC<TopbarProps> = ({
             setIndicatorPos(calculatePosition(indicatorRef));
         }
         setShowIndicators(!showIndicators);
+        setShowTools(false);
+        setShowTimeframes(false);
+        setShowChartTypes(false);
+        setShowSnapshotMenu(false);
+    };
+
+    const toggleTools = (): void => {
+        if (!showTools) {
+            setToolsPos(calculatePosition(toolsRef));
+        }
+        setShowTools(!showTools);
+        setShowIndicators(false);
         setShowTimeframes(false);
         setShowChartTypes(false);
         setShowSnapshotMenu(false);
@@ -384,6 +403,7 @@ const Topbar: React.FC<TopbarProps> = ({
         setShowTimeframes(false);
         setShowChartTypes(false);
         setShowIndicators(false);
+        setShowTools(false);
     };
 
     const toggleLayoutMenu = (): void => {
@@ -394,6 +414,7 @@ const Topbar: React.FC<TopbarProps> = ({
         setShowTimeframes(false);
         setShowChartTypes(false);
         setShowIndicators(false);
+        setShowTools(false);
         setShowSnapshotMenu(false);
     };
 
@@ -409,6 +430,9 @@ const Topbar: React.FC<TopbarProps> = ({
             }
             if (indicatorRef.current && !indicatorRef.current.contains(target) && !target.closest(`.${styles.indicatorDropdown}`)) {
                 setShowIndicators(false);
+            }
+            if (toolsRef.current && !toolsRef.current.contains(target) && !target.closest(`.${styles.indicatorDropdown}`)) {
+                setShowTools(false);
             }
             if (snapshotRef.current && !snapshotRef.current.contains(target) && !target.closest(`.${styles.snapshotDropdown}`)) {
                 setShowSnapshotMenu(false);
@@ -430,6 +454,7 @@ const Topbar: React.FC<TopbarProps> = ({
             if (showTimeframes) setTimeframePos(calculatePosition(timeframeRef));
             if (showChartTypes) setChartTypePos(calculatePosition(chartTypeRef));
             if (showIndicators) setIndicatorPos(calculatePosition(indicatorRef));
+            if (showTools) setToolsPos(calculatePosition(toolsRef));
             if (showSnapshotMenu) setSnapshotPos(calculateSnapshotPosition(snapshotRef));
             if (showLayoutMenu) setLayoutPos(calculatePosition(layoutRef));
         };
@@ -440,7 +465,7 @@ const Topbar: React.FC<TopbarProps> = ({
             window.removeEventListener('scroll', handleUpdate, true);
             window.removeEventListener('resize', handleUpdate);
         };
-    }, [showTimeframes, showChartTypes, showIndicators, showSnapshotMenu, showLayoutMenu]);
+    }, [showTimeframes, showChartTypes, showIndicators, showTools, showSnapshotMenu, showLayoutMenu]);
 
     return (
         <div className={styles.layoutAreaTop}>
@@ -759,9 +784,30 @@ const Topbar: React.FC<TopbarProps> = ({
                                                             <div className={styles.dropdownItem} onClick={(e) => { e.stopPropagation(); onAddIndicator?.('firstCandle'); }}>First Red Candle</div>
                                                             <div className={styles.dropdownItem} onClick={(e) => { e.stopPropagation(); onAddIndicator?.('rangeBreakout'); }}>Range Breakout</div>
                                                             <div className={styles.dropdownItem} onClick={(e) => { e.stopPropagation(); onAddIndicator?.('annStrategy'); }}>ANN Strategy</div>
-                                                            <div className={styles.dropdownDivider}></div>
-                                                            <div className={styles.dropdownSection}>Risk Management</div>
-                                                            <div className={styles.dropdownItem} onClick={(e) => { e.stopPropagation(); onAddIndicator?.('riskCalculator'); }}>Risk Calculator</div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <div className={styles.indicatorBtn} ref={toolsRef}>
+                                                    <button
+                                                        className={classNames(styles.button)}
+                                                        aria-label="Tools"
+                                                        title={`${tools.length} chart tools`}
+                                                        onClick={toggleTools}
+                                                    >
+                                                        <div className={styles.icon}>
+                                                            <BarChart3 size={18} />
+                                                        </div>
+                                                        <div className={styles.text}>Tools</div>
+                                                    </button>
+                                                    {showTools && (
+                                                        <div
+                                                            className={styles.indicatorDropdown}
+                                                            style={{ top: toolsPos.top, left: toolsPos.left }}
+                                                        >
+                                                            <div className={styles.dropdownSection}>Chart Tools</div>
+                                                            <div className={styles.dropdownItem} onClick={(e) => { e.stopPropagation(); onAddTool?.('riskCalculator'); }}>
+                                                                Risk Calculator
+                                                            </div>
                                                         </div>
                                                     )}
                                                 </div>

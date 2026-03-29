@@ -236,6 +236,41 @@ export const INDICATOR_REGISTRY: Record<string, IndicatorMetadata> = {
     description: 'Central Pivot Range (Pivot, BC, TC)'
   },
 
+  redCandleZones: {
+    cleanupType: INDICATOR_CLEANUP_TYPES.SERIES_ARRAY,
+    pane: 'main',
+    hasPane: false,
+    arrayRef: 'redCandleZonesSeriesRef',
+    description: 'Red Candle Supply and Demand Zones'
+  },
+
+  marketBias: {
+    cleanupType: INDICATOR_CLEANUP_TYPES.MULTI_SERIES,
+    pane: 'main',
+    hasPane: false,
+    hasPriceLines: false,
+    seriesKeys: ['candles', 'band'],
+    description: 'Market Bias Overlay'
+  },
+
+  srVolumeBoxes: {
+    cleanupType: INDICATOR_CLEANUP_TYPES.SERIES_ARRAY,
+    pane: 'main',
+    hasPane: false,
+    arrayRef: 'srVolumeBoxesSeriesRef',
+    hasMarkers: true,
+    description: 'Support and Resistance Volume Boxes'
+  },
+
+  vwapBands: {
+    cleanupType: INDICATOR_CLEANUP_TYPES.MULTI_SERIES,
+    pane: 'main',
+    hasPane: false,
+    hasPriceLines: false,
+    seriesKeys: ['center', 'upper1', 'lower1', 'upper2', 'lower2'],
+    description: 'VWAP with Standard Deviation Bands'
+  },
+
   // ==================== PINE SCRIPT ====================
   pine: {
     cleanupType: INDICATOR_CLEANUP_TYPES.SIMPLE_SERIES,

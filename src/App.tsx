@@ -764,6 +764,88 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
     setSearchMode
   });
 
+  const handleAddChartTool = useCallback((type: string) => {
+    setCharts((prev: any[]) =>
+      prev.map((chart: any) => {
+        if (chart.id !== activeChartId) return chart;
+        const existingTools = Array.isArray(chart.tools) ? chart.tools : [];
+        if (type === 'riskCalculator' && existingTools.some((tool: any) => tool.type === 'riskCalculator')) {
+          return chart;
+        }
+
+        const config = (indicatorConfigs as Record<string, any>)[type];
+        const defaultSettings: Record<string, unknown> = {};
+        if (config?.inputs) {
+          config.inputs.forEach((input: any) => {
+            if (input.default !== undefined) {
+              defaultSettings[input.key] = input.default;
+            }
+          });
+        }
+        if (config?.style) {
+          config.style.forEach((style: any) => {
+            if (style.default !== undefined) {
+              defaultSettings[style.key] = style.default;
+            }
+          });
+        }
+
+        const newTool = {
+          ...defaultSettings,
+          id: `${type}_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`,
+          type,
+          visible: true,
+          showPanel: true,
+        };
+
+        return {
+          ...chart,
+          tools: [...existingTools, newTool],
+        };
+      })
+    );
+  }, [activeChartId, setCharts]);
+
+  const handleChartToolRemove = useCallback((id: string) => {
+    setCharts((prev: any[]) =>
+      prev.map((chart: any) => {
+        if (chart.id !== activeChartId) return chart;
+        return {
+          ...chart,
+          tools: (chart.tools || []).filter((tool: any) => tool.id !== id),
+        };
+      })
+    );
+  }, [activeChartId, setCharts]);
+
+  const handleChartToolVisibilityToggle = useCallback((id: string) => {
+    setCharts((prev: any[]) =>
+      prev.map((chart: any) => {
+        if (chart.id !== activeChartId) return chart;
+        return {
+          ...chart,
+          tools: (chart.tools || []).map((tool: any) => (
+            tool.id === id ? { ...tool, visible: tool.visible === false ? true : false } : tool
+          )),
+        };
+      })
+    );
+  }, [activeChartId, setCharts]);
+
+  const handleChartToolSettings = useCallback((id: string, newSettings: any) => {
+    setCharts((prev: any[]) =>
+      prev.map((chart: any) => {
+        if (chart.id !== activeChartId) return chart;
+        return {
+          ...chart,
+          tools: (chart.tools || []).map((tool: any) => (
+            tool.id === id ? { ...tool, ...newSettings } : tool
+          )),
+        };
+      })
+    );
+  }, [activeChartId, setCharts]);
+
   // Comparison symbol selection - intercept to show options dialog
   const handleCompareSymbolSelect = useCallback((symbolData) => {
     if (searchMode === 'compare') {
@@ -1641,8 +1723,10 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
   const handleOpenIndicatorSettings = (indicatorId: any) => {
     // Find the indicator to edit
     const indicator = (activeChart as any)?.indicators?.find((ind: any) => ind.id === indicatorId || ind.type === indicatorId);
-    if (indicator) {
-      setEditingIndicator(indicator);
+    const tool = (activeChart as any)?.tools?.find((item: any) => item.id === indicatorId || item.type === indicatorId);
+    const editableItem = indicator || tool;
+    if (editableItem) {
+      setEditingIndicator(editableItem);
       setIsIndicatorSettingsOpen(true);
     }
   };
@@ -1926,6 +2010,7 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
             interval={currentInterval}
             chartType={chartType}
             indicators={activeChart.indicators}
+            tools={(activeChart as any)?.tools || []}
             favoriteIntervals={favoriteIntervals}
             customIntervals={customIntervals}
             lastNonFavoriteInterval={lastNonFavoriteInterval}
@@ -1933,6 +2018,7 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
             onIntervalChange={handleIntervalChange}
             onChartTypeChange={setChartType}
             onAddIndicator={handleAddIndicator}
+            onAddTool={handleAddChartTool}
             onToggleFavorite={handleToggleFavorite}
             onAddCustomInterval={handleAddCustomInterval}
             onRemoveCustomInterval={handleRemoveCustomInterval}
@@ -2076,10 +2162,14 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
           ) : activeRightPanel === 'objectTree' ? (
             <ObjectTreePanel
               indicators={(activeChart as any)?.indicators || [] as any}
+              tools={(activeChart as any)?.tools || [] as any}
               drawings={liveDrawings}
               onIndicatorVisibilityToggle={handleIndicatorVisibilityToggle}
               onIndicatorRemove={handleIndicatorRemove}
               onIndicatorSettings={handleOpenIndicatorSettings}
+              onToolVisibilityToggle={handleChartToolVisibilityToggle}
+              onToolRemove={handleChartToolRemove}
+              onToolSettings={handleOpenIndicatorSettings}
               onDrawingVisibilityToggle={(idx) => {
                 const activeRef = chartRefs.current[activeChartId];
                 if (activeRef && typeof activeRef.toggleDrawingVisibility === 'function') {
@@ -2315,6 +2405,9 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
             onIndicatorRemove={handleIndicatorRemove}
             onIndicatorVisibilityToggle={handleIndicatorVisibilityToggle}
             onIndicatorSettings={handleIndicatorSettings}
+            onToolRemove={handleChartToolRemove}
+            onToolVisibilityToggle={handleChartToolVisibilityToggle}
+            onToolSettings={handleChartToolSettings}
             onOpenIndicatorAlert={handleOpenIndicatorAlert}
             onIndicatorMoveUp={handleIndicatorMoveUp}
             chartAppearance={chartAppearance}
@@ -2484,7 +2577,11 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
             indicatorType={editingIndicator.type}
             settings={editingIndicator}
             onSave={(newSettings) => {
-              handleIndicatorSettings(editingIndicator.id, newSettings);
+              if (editingIndicator.type === 'riskCalculator') {
+                handleChartToolSettings(editingIndicator.id, newSettings);
+              } else {
+                handleIndicatorSettings(editingIndicator.id, newSettings);
+              }
               setIsIndicatorSettingsOpen(false);
               setEditingIndicator(null);
             }}

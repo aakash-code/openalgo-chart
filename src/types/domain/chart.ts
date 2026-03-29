@@ -200,6 +200,36 @@ export interface SRVolumeBoxesIndicator extends IndicatorConfig {
   boxWidth?: number;
 }
 
+export type ChartToolType = 'riskCalculator';
+
+export interface ChartToolConfig {
+  id: string;
+  type: ChartToolType;
+  visible: boolean;
+}
+
+export interface RiskCalculatorTool extends ChartToolConfig {
+  type: 'riskCalculator';
+  capital?: number;
+  riskPercent?: number;
+  side?: 'BUY' | 'SELL';
+  entryPrice?: number;
+  stopLossPrice?: number;
+  targetPrice?: number | null;
+  riskRewardRatio?: number;
+  product?: 'MIS' | 'CNC' | 'NRML';
+  sizingMode?: 'cash' | 'marginPerUnit' | 'leverage';
+  availableMargin?: number | null;
+  marginPerUnit?: number | null;
+  leverage?: number | null;
+  showTarget?: boolean;
+  showPanel?: boolean;
+  entryColor?: string;
+  stopLossColor?: string;
+  targetColor?: string;
+  lineWidth?: number;
+}
+
 /** Union of all indicator types */
 export type Indicator =
   | SMAIndicator
@@ -216,6 +246,8 @@ export type Indicator =
   | MarketBiasIndicator
   | SRVolumeBoxesIndicator
   | IndicatorConfig;
+
+export type ChartTool = RiskCalculatorTool | ChartToolConfig;
 
 /** Drawing tool type */
 export type DrawingType =
@@ -260,6 +292,7 @@ export interface ChartConfig {
   interval: TimeInterval;
   chartType?: ChartType;
   indicators: Indicator[];
+  tools?: ChartTool[];
   drawings?: Drawing[];
   showVolume?: boolean;
   showGrid?: boolean;

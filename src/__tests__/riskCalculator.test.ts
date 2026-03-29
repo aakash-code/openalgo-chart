@@ -196,7 +196,7 @@ describe('Risk Calculator - Core Logic', () => {
       expect(result.rewardPoints).toBe(50);
     });
 
-    it('should floor quantity to integer', () => {
+    it('should floor quantity to integer and respect cash affordability', () => {
       const params: RiskParams = {
         capital: 100000,
         riskPercent: 2,
@@ -207,10 +207,12 @@ describe('Risk Calculator - Core Logic', () => {
       };
       const result = calculateRiskPosition(params);
       expect(result.success).toBe(true);
-      // riskAmount = 2000
-      // slPoints = 6
-      // quantity = floor(2000 / 6) = 333
-      expect(result.quantity).toBe(333);
+      // riskAmount = 2000 => riskQty = 333
+      // cash mode => margin/share = entry price = 333
+      // capital-limited qty = floor(100000 / 333) = 300
+      expect(result.riskQuantity).toBe(333);
+      expect(result.marginQuantity).toBe(300);
+      expect(result.quantity).toBe(300);
       expect(Number.isInteger(result.quantity)).toBe(true);
     });
   });
@@ -273,6 +275,71 @@ describe('Risk Calculator - Core Logic', () => {
       };
       const validation = validateRiskParams(params);
       expect(validation.isValid).toBe(false);
+    });
+  });
+
+  describe('Margin-Aware Sizing', () => {
+    it('should be limited by margin when intraday margin is tighter than risk sizing', () => {
+      const result = calculateRiskPosition({
+        capital: 100000,
+        riskPercent: 1,
+        entryPrice: 6875,
+        stopLossPrice: 6870,
+        riskRewardRatio: 2,
+        side: 'BUY',
+        product: 'MIS',
+        sizingMode: 'marginPerUnit',
+        availableMargin: 100000,
+        marginPerUnit: 1375,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.riskQuantity).toBe(200);
+      expect(result.marginQuantity).toBe(72);
+      expect(result.quantity).toBe(72);
+      expect(result.requiredMargin).toBe(99000);
+      expect(result.limitingFactor).toBe('margin');
+    });
+
+    it('should be limited by risk when stop loss is wider than margin capacity', () => {
+      const result = calculateRiskPosition({
+        capital: 100000,
+        riskPercent: 1,
+        entryPrice: 6875,
+        stopLossPrice: 6855,
+        riskRewardRatio: 2,
+        side: 'BUY',
+        product: 'MIS',
+        sizingMode: 'marginPerUnit',
+        availableMargin: 100000,
+        marginPerUnit: 1375,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.riskQuantity).toBe(50);
+      expect(result.marginQuantity).toBe(72);
+      expect(result.quantity).toBe(50);
+      expect(result.limitingFactor).toBe('risk');
+    });
+
+    it('should derive margin per unit from leverage mode', () => {
+      const result = calculateRiskPosition({
+        capital: 100000,
+        riskPercent: 1,
+        entryPrice: 6875,
+        stopLossPrice: 6870,
+        riskRewardRatio: 2,
+        side: 'BUY',
+        product: 'MIS',
+        sizingMode: 'leverage',
+        availableMargin: 100000,
+        leverage: 5,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.marginPerUnit).toBe(1375);
+      expect(result.marginQuantity).toBe(72);
+      expect(result.quantity).toBe(72);
     });
   });
 });

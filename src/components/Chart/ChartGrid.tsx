@@ -39,6 +39,7 @@ interface Chart {
     exchange?: string;
     interval: string;
     indicators?: Indicator[];
+    tools?: Indicator[];
     comparisonSymbols?: ComparisonSymbol[];
     strategyConfig?: StrategyConfig;
 }
@@ -121,6 +122,7 @@ const ChartGrid: React.FC<ChartGridProps> = ({
                         onOHLCDataUpdate={onOHLCDataUpdate}
                         {...chartProps}
                         indicators={chart.indicators}
+                        tools={chart.tools}
                         comparisonSymbols={chart.comparisonSymbols}
                         strategyConfig={chart.strategyConfig}
                     />

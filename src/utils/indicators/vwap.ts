@@ -73,15 +73,15 @@ export const calculateVWAP = (
   let cumTPV = 0; // Cumulative Typical Price x Volume
   let cumVolume = 0;
   let lastSessionKey: string | null = null;
+  let lastVWAP: number | null = null;
 
   // Get market open time for this exchange
   const marketOpenMinutes = getMarketOpenMinutes(exchange);
 
   for (let i = 0; i < data.length; i++) {
     const candle = data[i];
-    // If ignoreVolume is true, treat volume as 1 for all candles (Equal Weight)
-    // For instruments with 0 volume (like indices), default to 1 for TWAP calculation
-    const volume = ignoreVolume || !candle.volume ? 1 : candle.volume;
+    const rawVolume = candle.volume ?? 0;
+    const volume = ignoreVolume ? 1 : rawVolume;
 
     // Check if we need to reset (new trading session)
     if (resetDaily) {
@@ -110,6 +110,7 @@ export const calculateVWAP = (
         // Reset cumulative values for new session
         cumTPV = 0;
         cumVolume = 0;
+        lastVWAP = null;
       }
       lastSessionKey = sessionKey;
     }
@@ -124,12 +125,19 @@ export const calculateVWAP = (
       case 'hlc3': default: price = (candle.high + candle.low + candle.close) / 3; break;
     }
 
+    if (!ignoreVolume && volume <= 0) {
+      const vwap = lastVWAP ?? price;
+      vwapData.push({ time: candle.time, value: vwap });
+      continue;
+    }
+
     // Update cumulative values
     cumTPV += price * volume;
     cumVolume += volume;
 
     // Calculate VWAP
     const vwap = cumVolume > 0 ? cumTPV / cumVolume : price;
+    lastVWAP = vwap;
 
     vwapData.push({ time: candle.time, value: vwap });
   }

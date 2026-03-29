@@ -87,20 +87,28 @@ function loadInitialState(): WorkspaceState {
   } | null;
 
   if (oldData) {
-    const migratedCharts = (oldData.charts || []).map((chart) => ({
-      ...chart,
-      symbol: chart.symbol === 'NIFTY 50' ? 'NIFTY' : chart.symbol,
-      exchange:
-        chart.symbol === 'NIFTY 50' || chart.symbol === 'NIFTY'
-          ? 'NSE_INDEX'
-          : chart.exchange,
-      indicators: migrateIndicators(chart.indicators || []).map((ind) => {
+    const migratedCharts = (oldData.charts || []).map((chart) => {
+      const migratedIndicators = migrateIndicators(chart.indicators || []).map((ind) => {
         if (ind.type === ('classic' as Indicator['type'])) {
           return { ...ind, type: 'pivotPoints' as const, pivotType: 'classic' };
         }
         return ind;
-      }),
-    })) as ChartConfig[];
+      });
+
+      return {
+        ...chart,
+        symbol: chart.symbol === 'NIFTY 50' ? 'NIFTY' : chart.symbol,
+        exchange:
+          chart.symbol === 'NIFTY 50' || chart.symbol === 'NIFTY'
+            ? 'NSE_INDEX'
+            : chart.exchange,
+        tools: [
+          ...(chart.tools || []),
+          ...migratedIndicators.filter((ind) => ind.type === ('riskCalculator' as Indicator['type'])),
+        ],
+        indicators: migratedIndicators.filter((ind) => ind.type !== ('riskCalculator' as Indicator['type'])),
+      };
+    }) as ChartConfig[];
 
     return {
       layout: (oldData.layout || '1') as LayoutType,
@@ -115,6 +123,7 @@ function loadInitialState(): WorkspaceState {
                 exchange: 'NSE_INDEX',
                 interval: 'D',
                 indicators: [],
+                tools: [],
               } as ChartConfig,
             ],
       chartRefs: {},
@@ -131,6 +140,7 @@ function loadInitialState(): WorkspaceState {
         exchange: 'NSE_INDEX',
         interval: 'D',
         indicators: [],
+        tools: [],
       } as ChartConfig,
     ],
     chartRefs: {},
@@ -191,6 +201,7 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
                 indicators: chart.indicators.map((ind) =>
                   ind.id === indicatorId ? { ...ind, ...settings } : ind
                 ),
+                tools: chart.tools || [],
               };
             }),
           })),
@@ -199,7 +210,11 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
           set((state) => ({
             charts: state.charts.map((chart) => {
               if (chart.id !== chartId) return chart;
-              return { ...chart, indicators: [...chart.indicators, indicator] };
+              return {
+                ...chart,
+                indicators: [...chart.indicators, indicator],
+                tools: chart.tools || [],
+              };
             }),
           })),
 
@@ -212,6 +227,7 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
                 indicators: chart.indicators.filter(
                   (ind) => ind.id !== indicatorId
                 ),
+                tools: chart.tools || [],
               };
             }),
           })),
@@ -248,14 +264,8 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
               return state;
             }
 
-            const migratedCharts = (layoutData.charts || []).map((chart) => ({
-              ...chart,
-              symbol: chart.symbol === 'NIFTY 50' ? 'NIFTY' : chart.symbol,
-              exchange:
-                chart.symbol === 'NIFTY 50' || chart.symbol === 'NIFTY'
-                  ? 'NSE_INDEX'
-                  : chart.exchange,
-              indicators: migrateIndicators(chart.indicators || []).map(
+            const migratedCharts = (layoutData.charts || []).map((chart) => {
+              const migratedIndicators = migrateIndicators(chart.indicators || []).map(
                 (ind) => {
                   if (ind.type === ('classic' as Indicator['type'])) {
                     return {
@@ -266,8 +276,22 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
                   }
                   return ind;
                 }
-              ),
-            })) as ChartConfig[];
+              );
+
+              return {
+                ...chart,
+                symbol: chart.symbol === 'NIFTY 50' ? 'NIFTY' : chart.symbol,
+                exchange:
+                  chart.symbol === 'NIFTY 50' || chart.symbol === 'NIFTY'
+                    ? 'NSE_INDEX'
+                    : chart.exchange,
+                tools: [
+                  ...(chart.tools || []),
+                  ...migratedIndicators.filter((ind) => ind.type === ('riskCalculator' as Indicator['type'])),
+                ],
+                indicators: migratedIndicators.filter((ind) => ind.type !== ('riskCalculator' as Indicator['type'])),
+              };
+            }) as ChartConfig[];
 
             if (migratedCharts.length === 0) {
               return state;
