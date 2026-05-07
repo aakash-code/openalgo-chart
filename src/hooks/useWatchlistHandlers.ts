@@ -4,42 +4,15 @@
  */
 
 import { useCallback, type Dispatch, type SetStateAction } from 'react';
+import type {
+  WatchlistSymbol,
+  Watchlist,
+  WatchlistsState,
+  WatchlistItemData,
+  WatchlistItem,
+} from '../types/watchlist';
 
 // ==================== TYPES ====================
-
-/** Watchlist symbol (can be string or object) */
-export type WatchlistSymbol = string | { symbol: string; exchange: string };
-
-/** Watchlist item */
-export interface Watchlist {
-  id: string;
-  name: string;
-  symbols: WatchlistSymbol[];
-  sections?: string[] | undefined;
-  collapsedSections?: string[] | undefined;
-  isFavorite?: boolean | undefined;
-  isFavorites?: boolean | undefined;
-  favoriteEmoji?: string | undefined;
-}
-
-/** Watchlists state */
-export interface WatchlistsState {
-  lists: Watchlist[];
-  activeListId: string;
-}
-
-/** Watchlist data item */
-export interface WatchlistDataItem {
-  symbol: string;
-  exchange?: string | undefined;
-  [key: string]: unknown;
-}
-
-/** Import symbol format */
-export interface ImportSymbol {
-  symbol: string;
-  exchange: string;
-}
 
 /** Toast function type */
 export type ShowToastFn = (message: string, type: 'success' | 'error' | 'warning' | 'info') => void;
@@ -47,14 +20,14 @@ export type ShowToastFn = (message: string, type: 'success' | 'error' | 'warning
 /** Hook parameters */
 export interface UseWatchlistHandlersParams {
   setWatchlistsState: Dispatch<SetStateAction<WatchlistsState>>;
-  setWatchlistData: Dispatch<SetStateAction<WatchlistDataItem[]>>;
+  setWatchlistData: Dispatch<SetStateAction<WatchlistItemData[]>>;
   watchlistsState: WatchlistsState;
   showToast: ShowToastFn;
 }
 
 /** Hook return type */
 export interface UseWatchlistHandlersReturn {
-  handleWatchlistReorder: (newItems: WatchlistSymbol[]) => void;
+  handleWatchlistReorder: (newItems: WatchlistItem[]) => void;
   handleCreateWatchlist: (name: string) => void;
   handleRenameWatchlist: (id: string, newName: string) => void;
   handleDeleteWatchlist: (id: string) => void;
@@ -63,11 +36,12 @@ export interface UseWatchlistHandlersReturn {
   handleClearWatchlist: (id: string) => void;
   handleCopyWatchlist: (id: string, newName: string) => void;
   handleExportWatchlist: (id: string) => void;
-  handleImportWatchlist: (symbols: ImportSymbol[], id: string) => void;
+  handleImportWatchlist: (symbols: WatchlistSymbol[], id: string) => void;
   handleAddSection: (sectionTitle: string, index: number) => void;
   handleToggleSection: (sectionTitle: string) => void;
   handleRenameSection: (oldTitle: string, newTitle: string) => void;
   handleDeleteSection: (sectionTitle: string) => void;
+  handleSetSymbolFlag: (symbol: string, exchange: string, flag: string | null) => void;
 }
 
 // ==================== HOOK ====================
@@ -85,7 +59,7 @@ export const useWatchlistHandlers = ({
 }: UseWatchlistHandlersParams): UseWatchlistHandlersReturn => {
   // Reorder symbols in watchlist
   const handleWatchlistReorder = useCallback(
-    (newItems: WatchlistSymbol[]) => {
+    (newItems: WatchlistItem[]) => {
       // newItems can contain both symbol objects and ###section strings
       setWatchlistsState((prev) => ({
         ...prev,
@@ -104,7 +78,7 @@ export const useWatchlistHandlers = ({
               typeof sym === 'string' ? `${sym}-NSE` : `${sym.symbol}-${sym.exchange || 'NSE'}`;
             return dataMap.get(key);
           })
-          .filter((item): item is WatchlistDataItem => item !== undefined);
+          .filter((item): item is WatchlistItemData => item !== undefined);
       });
     },
     [setWatchlistsState, setWatchlistData]
@@ -116,7 +90,7 @@ export const useWatchlistHandlers = ({
       const newId = 'wl_' + Date.now();
       setWatchlistsState((prev) => ({
         ...prev,
-        lists: [...prev.lists, { id: newId, name, symbols: [] }],
+        lists: [...prev.lists, { id: newId, name, symbols: [], isFavorite: false, collapsedSections: [] }],
         activeListId: newId,
       }));
     },
@@ -201,16 +175,15 @@ export const useWatchlistHandlers = ({
   // Copy a watchlist
   const handleCopyWatchlist = useCallback(
     (id: string, newName: string) => {
-      const sourcelist = watchlistsState.lists.find((wl) => wl.id === id);
-      if (!sourcelist) return;
+      const sourceList = watchlistsState.lists.find((wl) => wl.id === id);
+      if (!sourceList) return;
 
       const newId = 'wl_' + Date.now();
       const copiedList: Watchlist = {
-        ...sourcelist,
+        ...sourceList,
         id: newId,
         name: newName,
         isFavorite: false,
-        isFavorites: false,
       };
 
       setWatchlistsState((prev) => ({
@@ -258,24 +231,27 @@ export const useWatchlistHandlers = ({
 
   // Import symbols to watchlist from CSV
   const handleImportWatchlist = useCallback(
-    (symbols: ImportSymbol[], id: string) => {
+    (symbols: WatchlistSymbol[], id: string) => {
       if (!symbols || symbols.length === 0) return;
 
       setWatchlistsState((prev) => ({
         ...prev,
         lists: prev.lists.map((wl) => {
           if (wl.id !== id) return wl;
+
           // Get existing symbol names to avoid duplicates
           const existingSymbols = new Set(
-            (wl.symbols || [])
+            wl.symbols
               .filter((s) => typeof s !== 'string' || !s.startsWith('###'))
               .map((s) => (typeof s === 'string' ? s : s.symbol))
           );
+
           // Filter out duplicates
           const newSymbols = symbols.filter((s) => !existingSymbols.has(s.symbol));
+
           return {
             ...wl,
-            symbols: [...(wl.symbols || []), ...newSymbols],
+            symbols: [...wl.symbols, ...newSymbols],
           };
         }),
       }));
@@ -283,7 +259,6 @@ export const useWatchlistHandlers = ({
     },
     [setWatchlistsState, showToast]
   );
-
   // Add a section to the watchlist at a specific index
   const handleAddSection = useCallback(
     (sectionTitle: string, index: number) => {
@@ -401,6 +376,38 @@ export const useWatchlistHandlers = ({
     [setWatchlistsState]
   );
 
+  // Set symbol flag
+  const handleSetSymbolFlag = useCallback(
+    (symbol: string, exchange: string, flag: string | null) => {
+      setWatchlistsState((prev) => ({
+        ...prev,
+        lists: prev.lists.map((wl) =>
+          wl.id === prev.activeListId
+            ? {
+                ...wl,
+                symbols: wl.symbols.map((s) => {
+                  if (typeof s !== 'string' && s.symbol === symbol && s.exchange === exchange) {
+                    return { ...s, flag: flag || undefined };
+                  }
+                  return s;
+                }),
+              }
+            : wl
+        ),
+      }));
+
+      // Update real-time data too if present
+      setWatchlistData((prev) =>
+        prev.map((item) =>
+          item.symbol === symbol && item.exchange === exchange
+            ? { ...item, flag: flag || undefined }
+            : item
+        )
+      );
+    },
+    [setWatchlistsState, setWatchlistData]
+  );
+
   return {
     handleWatchlistReorder,
     handleCreateWatchlist,
@@ -416,6 +423,7 @@ export const useWatchlistHandlers = ({
     handleToggleSection,
     handleRenameSection,
     handleDeleteSection,
+    handleSetSymbolFlag,
   };
 };
 

@@ -7,7 +7,7 @@ import type { ChartConfig } from './chart';
 import type { IChartApi } from 'lightweight-charts';
 
 /** Layout type - number of charts */
-export type LayoutType = '1' | '2' | '2v' | '3' | '4' | '6';
+export type LayoutType = '1' | '2' | '2v' | '3' | '4' | '5' | '6' | '8' | '10';
 
 /** Layout configuration */
 export interface LayoutConfig {
@@ -23,9 +23,12 @@ export const LAYOUTS: Record<LayoutType, LayoutConfig> = {
   '1': { type: '1', label: 'Single', rows: 1, cols: 1 },
   '2': { type: '2', label: '2 Horizontal', rows: 1, cols: 2 },
   '2v': { type: '2v', label: '2 Vertical', rows: 2, cols: 1 },
-  '3': { type: '3', label: '3 Charts', rows: 2, cols: 2 },
+  '3': { type: '3', label: '3 Charts', rows: 1, cols: 3 },
   '4': { type: '4', label: '4 Charts', rows: 2, cols: 2 },
+  '5': { type: '5', label: '5 Charts', rows: 2, cols: 3 },
   '6': { type: '6', label: '6 Charts', rows: 2, cols: 3 },
+  '8': { type: '8', label: '8 Charts', rows: 2, cols: 4 },
+  '10': { type: '10', label: '10 Charts', rows: 2, cols: 5 },
 };
 
 /** Workspace state */

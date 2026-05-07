@@ -1,5 +1,5 @@
 import React from 'react';
-import { Layers, ArrowUp, ArrowDown, Trash2 } from 'lucide-react';
+import { Layers, ArrowUp, ArrowDown, Trash2, Flag } from 'lucide-react';
 import { BaseContextMenu, MenuItem, MenuDivider } from '../shared';
 
 interface Position {
@@ -15,6 +15,7 @@ export interface ContextMenuProps {
     onMoveToTop?: () => void;
     onMoveToBottom?: () => void;
     onRemove?: () => void;
+    onSetFlag?: (flag: string | null) => void;
 }
 
 /**
@@ -25,6 +26,7 @@ export interface ContextMenuProps {
  * - Move to top
  * - Move to bottom
  * - Remove from watchlist
+ * - Set color flag
  */
 
 const ContextMenu: React.FC<ContextMenuProps> = ({
@@ -35,6 +37,7 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
     onMoveToTop,
     onMoveToBottom,
     onRemove,
+    onSetFlag,
 }) => {
     return (
         <BaseContextMenu
@@ -62,6 +65,14 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
                 label="Move to bottom"
                 onClick={onMoveToBottom}
             />
+
+            <MenuDivider />
+
+            <div style={{ padding: '4px 12px', fontSize: '12px', color: '#888', fontWeight: 600 }}>Flags</div>
+            <MenuItem label="🔴 Red Flag" onClick={() => onSetFlag?.('red')} />
+            <MenuItem label="🟢 Green Flag" onClick={() => onSetFlag?.('green')} />
+            <MenuItem label="🔵 Blue Flag" onClick={() => onSetFlag?.('blue')} />
+            <MenuItem label="⚪ Clear Flag" onClick={() => onSetFlag?.(null)} />
 
             <MenuDivider />
 

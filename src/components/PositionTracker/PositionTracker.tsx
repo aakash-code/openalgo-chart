@@ -87,6 +87,7 @@ const PositionTracker: React.FC<PositionTrackerProps> = ({
     const [sectorFilter, setSectorFilter] = useState('All');
     const [topNCount, setTopNCount] = useState(10);
     const [focusedIndex, setFocusedIndex] = useState(-1);
+
     const [columnWidths, setColumnWidths] = useState<ColumnWidths>(DEFAULT_COLUMN_WIDTHS);
     const [resizing, setResizing] = useState<string | null>(null);
     const searchInputRef = useRef<HTMLInputElement>(null);
@@ -282,6 +283,13 @@ const PositionTracker: React.FC<PositionTrackerProps> = ({
         return data;
     }, [displayData, filterMode, sectorFilter, topNCount]);
 
+    // Clamp focused index when data changes
+    useEffect(() => {
+        if (focusedIndex >= filteredData.length) {
+            setFocusedIndex(filteredData.length - 1);
+        }
+    }, [filteredData.length, focusedIndex]);
+
     const handleAddSymbol = useCallback((symbol: string, exchange = 'NSE'): void => {
         if (sourceMode !== 'custom') return;
 
@@ -311,16 +319,29 @@ const PositionTracker: React.FC<PositionTrackerProps> = ({
     const handleKeyDown = useCallback((e: KeyboardEvent<HTMLDivElement>): void => {
         if (filteredData.length === 0) return;
 
+        let nextIndex = focusedIndex;
+
         if (e.key === 'ArrowDown') {
             e.preventDefault();
-            setFocusedIndex(prev => prev < 0 ? 0 : Math.min(prev + 1, filteredData.length - 1));
+            nextIndex = focusedIndex < 0 ? 0 : Math.min(focusedIndex + 1, filteredData.length - 1);
         } else if (e.key === 'ArrowUp') {
             e.preventDefault();
-            setFocusedIndex(prev => prev < 0 ? 0 : Math.max(prev - 1, 0));
+            nextIndex = focusedIndex < 0 ? 0 : Math.max(focusedIndex - 1, 0);
         } else if (e.key === 'Enter' && focusedIndex >= 0 && focusedIndex < filteredData.length) {
             e.preventDefault();
             const item = filteredData[focusedIndex];
             if (item) onSymbolSelect({ symbol: item.symbol, exchange: item.exchange });
+            return;
+        } else {
+            return;
+        }
+
+        if (nextIndex !== focusedIndex) {
+            setFocusedIndex(nextIndex);
+            const item = filteredData[nextIndex];
+            if (item) {
+                onSymbolSelect({ symbol: item.symbol, exchange: item.exchange });
+            }
         }
     }, [filteredData, focusedIndex, onSymbolSelect]);
 

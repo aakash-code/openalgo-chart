@@ -4,6 +4,7 @@ export interface RiskCalculatorOptions {
   entryPrice: number;
   stopLossPrice: number;
   targetPrice: number | null;
+  targets?: { price: number; exitPercent: number }[];
   side: 'BUY' | 'SELL';
   showTarget: boolean;
   colors: {
@@ -12,18 +13,21 @@ export interface RiskCalculatorOptions {
     target: string;
   };
   lineWidth: number;
-  onPriceChange: (lineType: 'entry' | 'stopLoss' | 'target', newPrice: number) => void;
+  onPriceChange: (lineType: string, newPrice: number) => void;
+  onPriceDrag?: (lineType: string, newPrice: number) => void;
 }
 
 export interface RendererData {
   entryPrice: number;
   stopLossPrice: number;
   targetPrice: number | null;
+  targets?: { price: number; exitPercent: number }[];
   entryY: number | null;
   stopLossY: number | null;
   targetY: number | null;
-  hoveredLine: 'entry' | 'stopLoss' | 'target' | null;
-  draggingLine: 'entry' | 'stopLoss' | 'target' | null;
+  targetYs: (number | null)[];
+  hoveredLine: string | null;
+  draggingLine: string | null;
   dragPrices: Map<string, number>;
   colors: {
     entry: string;

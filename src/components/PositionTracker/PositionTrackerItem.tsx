@@ -54,6 +54,14 @@ const PositionTrackerItem: React.FC<PositionTrackerItemProps> = memo(({
 
     const [animationClass, setAnimationClass] = useState('');
     const prevRankChangeRef = useRef(rankChange);
+    const itemRef = useRef<HTMLDivElement>(null);
+
+    // Scroll into view when focused
+    useEffect(() => {
+        if (isFocused && itemRef.current) {
+            itemRef.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+    }, [isFocused]);
 
     // Trigger animation when rank changes
     useEffect(() => {
@@ -132,6 +140,7 @@ const PositionTrackerItem: React.FC<PositionTrackerItemProps> = memo(({
 
     return (
         <div
+            ref={itemRef}
             className={classNames(styles.item, animationClass, {
                 [styles.focused]: isFocused,
             })}

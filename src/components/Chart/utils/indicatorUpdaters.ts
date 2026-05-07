@@ -16,7 +16,9 @@ import {
     calculateSupertrend,
     calculateADX,
     calculateIchimoku,
-    calculatePivotPoints
+    calculatePivotPoints,
+    calculateCVD,
+    calculatePatternRecognition
 } from '../../../utils/indicators';
 import { calculateANNStrategy } from '../../../utils/indicators/annStrategy';
 import { calculateHilengaMilenga } from '../../../utils/indicators/hilengaMilenga';
@@ -443,6 +445,29 @@ export const updatePineSeries = (series: any, ind: IndicatorConfig, data: OHLCDa
         series.setData([]);
     }
 };
+/**
+ * Update CVD series
+ */
+export const updateCVDSeries = (series: any, ind: IndicatorConfig, data: OHLCData[], isVisible: boolean): void => {
+    series.applyOptions({
+        visible: isVisible,
+        upColor: ind.colorUp || '#089981',
+        downColor: ind.colorDown || '#F23645'
+    });
+
+    const val = calculateCVD(data);
+    if (val) {
+        const colored = val.map((d: any) => ({
+            time: d.time,
+            open: d.open,
+            high: d.high,
+            low: d.low,
+            close: d.close,
+            color: d.delta >= 0 ? (ind.colorUp || '#089981') : (ind.colorDown || '#F23645')
+        }));
+        series.setData(colored);
+    }
+};
 
 /**
  * Main update function - updates series for any indicator type
@@ -505,9 +530,47 @@ export const updateIndicatorSeries = (series: any, ind: IndicatorConfig, data: O
             updatePivotPointsSeries(series, ind, data, isVisible);
             return [];
 
+        case 'cvd':
+            updateCVDSeries(series, ind, data, isVisible);
+            return [];
+
         case 'pine':
             updatePineSeries(series, ind, data, isVisible);
             return [];
+
+        case 'patternRecognition': {
+            if (!isVisible) return [];
+            const result = calculatePatternRecognition(data, {
+                showCandlestickPatterns: ind.showCandlestickPatterns !== false,
+                showMarketStructure: ind.showMarketStructure !== false,
+                lookback: ind.lookback || 5,
+                hammerColor: ind.hammerColor,
+                engulfingColor: ind.engulfingColor,
+                structureColor: ind.structureColor
+            });
+
+            const markers: ChartMarker[] = [];
+            
+            // Add candlestick markers
+            if (result.markers) {
+                markers.push(...result.markers as any);
+            }
+
+            // Convert market structure to markers
+            if (result.marketStructure) {
+                result.marketStructure.forEach(ms => {
+                    markers.push({
+                        time: ms.time,
+                        position: ms.label.startsWith('H') ? 'aboveBar' : 'belowBar',
+                        color: ms.color || '#FF9800',
+                        shape: 'square',
+                        text: ms.label
+                    });
+                });
+            }
+
+            return markers;
+        }
 
         default:
             return [];

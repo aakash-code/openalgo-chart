@@ -1,5 +1,5 @@
 import { LineSeries, createChart } from 'lightweight-charts';
-import { generateLineData } from '../../../../../sample-data';
+import { generateLineData } from '../../../../../../sample-data';
 import { HorizontalLine } from '../horizontal-line';
 
 const chart = ((window as unknown as any).chart = createChart('chart', {

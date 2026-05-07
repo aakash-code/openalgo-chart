@@ -39,6 +39,7 @@ export interface ComparisonSymbol {
   exchange: string;
   color: string;
   scaleMode?: string | undefined;
+  priceScaleId?: string | undefined;
 }
 
 /** Strategy configuration - extended chart data not in base ChartConfig */
@@ -105,12 +106,28 @@ export interface UseChartReturn {
   addChart: () => number;
   removeChart: (chartId: number) => void;
   getChartRef: (id: number) => ChartRef | null | undefined;
+
+  // Sync
+  isSyncEnabled: boolean;
+  syncOptions: WorkspaceState['syncOptions'];
+  setIsSyncEnabled: (enabled: boolean) => void;
+  setSyncOptions: (options: Partial<WorkspaceState['syncOptions']>) => void;
 }
 
 // ==================== CONSTANTS ====================
 
 // Module-level singleton for chart refs to ensure stability across renders/components
 const globalChartRefs: ChartRefs = { current: {} };
+
+// Define WorkspaceState locally for typing if not exported from store
+interface WorkspaceState {
+  syncOptions: {
+    symbol: boolean;
+    interval: boolean;
+    crosshair: boolean;
+    time: boolean;
+  };
+}
 
 const DEFAULT_CHART: ExtendedChartConfig = {
   id: 1,
@@ -140,6 +157,10 @@ export const useChart = (): UseChartReturn => {
     updateIndicator: storeUpdateIndicator,
     addIndicator: storeAddIndicator,
     removeIndicator: storeRemoveIndicator,
+    isSyncEnabled,
+    setIsSyncEnabled,
+    syncOptions,
+    setSyncOptions,
   } = useWorkspaceStore();
 
   // Cast charts to extended type for compatibility
@@ -392,6 +413,12 @@ export const useChart = (): UseChartReturn => {
     addChart,
     removeChart,
     getChartRef,
+
+    // Sync
+    isSyncEnabled,
+    syncOptions,
+    setIsSyncEnabled,
+    setSyncOptions,
   };
 };
 

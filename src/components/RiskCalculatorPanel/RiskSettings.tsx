@@ -2,17 +2,22 @@ import React from 'react';
 import type { FC, ChangeEvent } from 'react';
 import styles from './RiskCalculatorPanel.module.css';
 
-type Side = 'BUY' | 'SELL';
+export type TradeSide = 'BUY' | 'SELL';
+export type TradeSegment = 'Equity Delivery' | 'Equity Intraday' | 'F&O Futures' | 'F&O Options';
+export type Exchange = 'NSE' | 'BSE';
 
 interface Params {
     capital: number;
     riskPercent: number;
-    side: Side;
+    side: TradeSide;
     entryPrice: number;
     stopLossPrice: number;
     targetPrice?: number;
     riskRewardRatio: number;
     showTarget: boolean;
+    leverage?: number;
+    segment?: TradeSegment;
+    exchange?: Exchange;
 }
 
 export interface RiskSettingsProps {
@@ -34,7 +39,7 @@ const RiskSettings: FC<RiskSettingsProps> = ({ params, updateParam, ltp, onClose
                 <input
                     id="capital"
                     type="number"
-                    value={params.capital}
+                    value={params.capital || 100000}
                     onChange={(e: ChangeEvent<HTMLInputElement>) => updateParam('capital', Number(e.target.value))}
                     min={1000}
                     step={1000}
@@ -48,13 +53,55 @@ const RiskSettings: FC<RiskSettingsProps> = ({ params, updateParam, ltp, onClose
                 <input
                     id="riskPercent"
                     type="number"
-                    value={params.riskPercent}
+                    value={params.riskPercent || 2}
                     onChange={(e: ChangeEvent<HTMLInputElement>) => updateParam('riskPercent', Number(e.target.value))}
-                    min={0.5}
-                    max={5}
+                    min={0.1}
+                    max={100}
                     step={0.1}
                     placeholder="Risk per trade"
                 />
+            </div>
+            
+            {/* Leverage Input */}
+            <div className={styles.inputGroup}>
+                <label htmlFor="leverage">Leverage (x)</label>
+                <input
+                    id="leverage"
+                    type="number"
+                    value={params.leverage || 1}
+                    onChange={(e: ChangeEvent<HTMLInputElement>) => updateParam('leverage', Number(e.target.value))}
+                    min={1}
+                    max={100}
+                    step={1}
+                />
+            </div>
+            
+            {/* Segment Selection */}
+            <div className={styles.inputGroup}>
+                <label htmlFor="segment">Segment</label>
+                <select
+                    id="segment"
+                    value={params.segment || 'Equity Intraday'}
+                    onChange={(e: ChangeEvent<HTMLSelectElement>) => updateParam('segment', e.target.value)}
+                >
+                    <option value="Equity Delivery">Equity Delivery</option>
+                    <option value="Equity Intraday">Equity Intraday</option>
+                    <option value="F&O Futures">F&O Futures</option>
+                    <option value="F&O Options">F&O Options</option>
+                </select>
+            </div>
+            
+            {/* Exchange Selection */}
+            <div className={styles.inputGroup}>
+                <label htmlFor="exchange">Exchange</label>
+                <select
+                    id="exchange"
+                    value={params.exchange || 'NSE'}
+                    onChange={(e: ChangeEvent<HTMLSelectElement>) => updateParam('exchange', e.target.value)}
+                >
+                    <option value="NSE">NSE</option>
+                    <option value="BSE">BSE</option>
+                </select>
             </div>
 
             {/* Side Selection */}
@@ -62,8 +109,8 @@ const RiskSettings: FC<RiskSettingsProps> = ({ params, updateParam, ltp, onClose
                 <label htmlFor="side">Side</label>
                 <select
                     id="side"
-                    value={params.side}
-                    onChange={(e: ChangeEvent<HTMLSelectElement>) => updateParam('side', e.target.value)}
+                    value={params.side || 'BUY'}
+                    onChange={(e: ChangeEvent<HTMLSelectElement>) => updateParam('side', e.target.value as TradeSide)}
                 >
                     <option value="BUY">BUY</option>
                     <option value="SELL">SELL</option>
@@ -76,7 +123,7 @@ const RiskSettings: FC<RiskSettingsProps> = ({ params, updateParam, ltp, onClose
                 <input
                     id="entryPrice"
                     type="number"
-                    value={params.entryPrice}
+                    value={params.entryPrice || 0}
                     onChange={(e: ChangeEvent<HTMLInputElement>) => updateParam('entryPrice', Number(e.target.value))}
                     step={0.01}
                     placeholder="Entry price"
@@ -98,7 +145,7 @@ const RiskSettings: FC<RiskSettingsProps> = ({ params, updateParam, ltp, onClose
                 <input
                     id="stopLossPrice"
                     type="number"
-                    value={params.stopLossPrice}
+                    value={params.stopLossPrice || 0}
                     onChange={(e: ChangeEvent<HTMLInputElement>) => updateParam('stopLossPrice', Number(e.target.value))}
                     step={0.01}
                     placeholder="Stop loss price"
@@ -124,7 +171,7 @@ const RiskSettings: FC<RiskSettingsProps> = ({ params, updateParam, ltp, onClose
                     <label htmlFor="riskRewardRatio">Risk:Reward Ratio</label>
                     <select
                         id="riskRewardRatio"
-                        value={params.riskRewardRatio}
+                        value={params.riskRewardRatio || 2}
                         onChange={(e: ChangeEvent<HTMLSelectElement>) => updateParam('riskRewardRatio', Number(e.target.value))}
                     >
                         <option value={1}>1:1</option>
@@ -144,7 +191,7 @@ const RiskSettings: FC<RiskSettingsProps> = ({ params, updateParam, ltp, onClose
                     <input
                         id="showTarget"
                         type="checkbox"
-                        checked={params.showTarget}
+                        checked={params.showTarget !== false}
                         onChange={(e: ChangeEvent<HTMLInputElement>) => updateParam('showTarget', e.target.checked)}
                     />
                     Show Target Line

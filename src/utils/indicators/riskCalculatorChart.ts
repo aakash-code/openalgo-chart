@@ -35,7 +35,8 @@ export interface CreatePrimitiveParams {
     results: RiskCalculationSuccess;
     settings: RiskCalculatorSettings;
     side: TradeSide;
-    onPriceChange: (lineType: 'entry' | 'stopLoss' | 'target', price: number) => void;
+    onPriceChange: (lineType: string, price: number) => void;
+    onPriceDrag?: (lineType: string, price: number) => void;
 }
 
 /**
@@ -90,20 +91,23 @@ export interface RemoveLinesParams {
  * @returns Primitive instance or null
  */
 export function createRiskCalculatorPrimitive(params: CreatePrimitiveParams): RiskCalculatorLines | null {
-    const { series, results, settings, side, onPriceChange } = params;
+    const { series, results, settings, side, onPriceChange, onPriceDrag } = params;
 
     if (!series || !results || !results.success) {
         return null;
     }
 
-    const entryPrice = results.formatted ? parseFloat(results.formatted.entryPrice.replace('₹', '').replace(/,/g, '')) : 0;
-    const stopLossPrice = results.formatted ? parseFloat(results.formatted.stopLossPrice.replace('₹', '').replace(/,/g, '')) : 0;
+    // Use numeric values directly from results if available
+    const entryPrice = (results as any).entryPrice ?? (results.formatted ? parseFloat(results.formatted.entryPrice.replace('₹', '').replace(/,/g, '')) : 0);
+    const stopLossPrice = (results as any).stopLossPrice ?? (results.formatted ? parseFloat(results.formatted.stopLossPrice.replace('₹', '').replace(/,/g, '')) : 0);
     const targetPrice = results.targetPrice || null;
+    const targets = (results as any).targets || [];
 
     const primitive = new RiskCalculatorLines({
         entryPrice,
         stopLossPrice,
         targetPrice,
+        targets,
         side: side || 'BUY',
         showTarget: results.showTarget !== false,
         colors: {
@@ -113,10 +117,47 @@ export function createRiskCalculatorPrimitive(params: CreatePrimitiveParams): Ri
         },
         lineWidth: settings.lineWidth || 2,
         onPriceChange: onPriceChange || (() => { }),
+        onPriceDrag: onPriceDrag,
     });
 
     series.attachPrimitive(primitive);
     return primitive;
+}
+
+/**
+ * Update existing risk calculator primitive
+ * 
+ * @param params - Create primitive parameters
+ * @returns Success boolean
+ */
+export function updateRiskCalculatorPrimitive(params: CreatePrimitiveParams, primitive: RiskCalculatorLines): boolean {
+    const { results, settings, side } = params;
+
+    if (!primitive || !results || !results.success) {
+        return false;
+    }
+
+    const entryPrice = (results as any).entryPrice ?? (results.formatted ? parseFloat(results.formatted.entryPrice.replace('₹', '').replace(/,/g, '')) : 0);
+    const stopLossPrice = (results as any).stopLossPrice ?? (results.formatted ? parseFloat(results.formatted.stopLossPrice.replace('₹', '').replace(/,/g, '')) : 0);
+    const targetPrice = results.targetPrice || null;
+    const targets = (results as any).targets || [];
+
+    primitive.updatePrices(entryPrice, stopLossPrice, targetPrice, targets);
+    
+    // Update options (colors, callbacks, etc.)
+    primitive.applyOptions({
+        colors: settings.entryColor || settings.stopLossColor || settings.targetColor ? {
+            entry: settings.entryColor || '#26a69a',
+            stopLoss: settings.stopLossColor || '#ef5350',
+            target: settings.targetColor || '#42a5f5',
+        } : undefined,
+        side: side || 'BUY',
+        showTarget: results.showTarget !== false,
+        onPriceChange: params.onPriceChange,
+        onPriceDrag: params.onPriceDrag,
+    });
+    
+    return true;
 }
 
 /**

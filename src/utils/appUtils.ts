@@ -19,30 +19,7 @@ export interface CustomInterval {
     isCustom: boolean;
 }
 
-/**
- * Watchlist symbol definition
- */
-export interface WatchlistSymbol {
-    symbol: string;
-    exchange: string;
-}
-
-/**
- * Single watchlist definition
- */
-export interface Watchlist {
-    id: string;
-    name: string;
-    symbols: WatchlistSymbol[];
-}
-
-/**
- * Watchlist data structure with multiple lists
- */
-export interface WatchlistData {
-    lists: Watchlist[];
-    activeListId: string;
-}
+import type { Watchlist, WatchlistsState as WatchlistData, WatchlistSymbol } from '../types/watchlist';
 
 /**
  * Chart appearance settings
@@ -178,6 +155,8 @@ export const DEFAULT_WATCHLIST: Watchlist = {
         { symbol: 'BHARTIARTL', exchange: 'NSE' },
         { symbol: 'ITC', exchange: 'NSE' },
     ],
+    isFavorite: false,
+    collapsedSections: [],
 };
 
 /**

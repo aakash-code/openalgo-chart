@@ -198,6 +198,18 @@ const buildCommands = (handlers: CommandPaletteHandlers): Command[] => {
       description: 'Volume Weighted Average Price',
       keywords: ['volume', 'weighted', 'average', 'price'],
     },
+    {
+      id: 'volumetricCandlePair',
+      title: 'Volumetric Candle Pair',
+      description: 'First Volumetric Candle Pair Zone [Aakash]',
+      keywords: ['volumetric', 'candle', 'pair', 'zone', 'aakash'],
+    },
+    {
+      id: 'institutionalVolumetric',
+      title: 'Institutional Volumetric',
+      description: 'Institutional Volumetric RVOL Strategy',
+      keywords: ['institutional', 'volumetric', 'rvol', 'pace', 'volume'],
+    },
   ];
 
   indicators.forEach((indicator) => {

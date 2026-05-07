@@ -344,3 +344,59 @@
     color: white;
     border-color: var(--tv-color-brand);
 }
+
+/* Search bar */
+.searchBar {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--tv-color-border);
+    background: var(--tv-color-pane-background);
+}
+
+.searchInputWrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+    background: var(--tv-color-toolbar-button-background-hover);
+    border: 1px solid var(--tv-color-border);
+    border-radius: 6px;
+    padding: 0 8px;
+    height: 30px;
+}
+
+.searchInputWrapper:focus-within {
+    border-color: var(--tv-color-brand);
+}
+
+.searchIcon {
+    color: var(--tv-color-text-secondary);
+    margin-right: 8px;
+}
+
+.searchInput {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: var(--tv-color-text-primary);
+    font-size: 13px;
+    outline: none;
+    width: 100%;
+}
+
+.searchInput::placeholder {
+    color: var(--tv-color-text-secondary);
+}
+
+.clearSearch {
+    color: var(--tv-color-text-secondary);
+    cursor: pointer;
+    margin-left: 8px;
+    transition: color 0.15s ease;
+}
+
+.clearSearch:hover {
+    color: var(--tv-color-text-primary);
+}
+
+.activeIcon {
+    color: var(--tv-color-brand) !important;
+}

@@ -7,13 +7,17 @@
 import type {
     IChartApi,
     ISeriesApi,
-    ISeriesPrimitivePaneRenderer,
-    ISeriesPrimitivePaneView,
+    IPrimitivePaneRenderer,
+    IPrimitivePaneView,
     SeriesAttachedParameter,
     SeriesOptionsMap,
     Time,
-    BitmapCoordinatesRenderingScope,
 } from 'lightweight-charts';
+
+import { 
+    BitmapCoordinatesRenderingScope, 
+    CanvasRenderingTarget2D 
+} from 'fancy-canvas';
 
 import {
     COLORS,
@@ -49,14 +53,14 @@ export interface VolumeProfileData {
 /**
  * Volume Profile Pane Renderer
  */
-class VolumeProfilePaneRenderer implements ISeriesPrimitivePaneRenderer {
+class VolumeProfilePaneRenderer implements IPrimitivePaneRenderer {
     private _source: VolumeProfilePrimitive;
 
     constructor(source: VolumeProfilePrimitive) {
         this._source = source;
     }
 
-    draw(target: { useBitmapCoordinateSpace: (callback: (scope: BitmapCoordinatesRenderingScope) => void) => void }): void {
+    draw(target: CanvasRenderingTarget2D): void {
         target.useBitmapCoordinateSpace((scope: BitmapCoordinatesRenderingScope) => {
             const { context: ctx, bitmapSize, horizontalPixelRatio, verticalPixelRatio } = scope;
             const profileData = this._source._profileData;
@@ -420,7 +424,7 @@ class VolumeProfilePaneRenderer implements ISeriesPrimitivePaneRenderer {
 /**
  * Volume Profile Pane View
  */
-class VolumeProfilePaneView implements ISeriesPrimitivePaneView {
+class VolumeProfilePaneView implements IPrimitivePaneView {
     private _source: VolumeProfilePrimitive;
 
     constructor(source: VolumeProfilePrimitive) {
@@ -429,7 +433,7 @@ class VolumeProfilePaneView implements ISeriesPrimitivePaneView {
 
     update(): void {}
 
-    renderer(): ISeriesPrimitivePaneRenderer {
+    renderer(): IPrimitivePaneRenderer {
         return new VolumeProfilePaneRenderer(this._source);
     }
 
@@ -470,7 +474,7 @@ export class VolumeProfilePrimitive {
         this._requestUpdate = null;
     }
 
-    paneViews(): readonly ISeriesPrimitivePaneView[] {
+    paneViews(): readonly IPrimitivePaneView[] {
         return this._paneViews;
     }
 

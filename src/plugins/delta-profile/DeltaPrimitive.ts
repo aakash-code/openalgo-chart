@@ -6,14 +6,18 @@
 import type {
   IChartApi,
   ISeriesApi,
-  ISeriesPrimitivePaneRenderer,
-  ISeriesPrimitivePaneView,
+  IPrimitivePaneRenderer,
+  IPrimitivePaneView,
   ITimeScaleApi,
   SeriesAttachedParameter,
   SeriesOptionsMap,
   Time,
-  BitmapCoordinatesRenderingScope,
 } from 'lightweight-charts';
+
+import {
+  BitmapCoordinatesRenderingScope,
+  CanvasRenderingTarget2D,
+} from 'fancy-canvas';
 
 import {
   COLORS,
@@ -37,14 +41,14 @@ export interface DeltaData {
 /**
  * Delta Pane Renderer - handles Canvas2D drawing
  */
-class DeltaPaneRenderer implements ISeriesPrimitivePaneRenderer {
+class DeltaPaneRenderer implements IPrimitivePaneRenderer {
   private _source: DeltaPrimitive;
 
   constructor(source: DeltaPrimitive) {
     this._source = source;
   }
 
-  draw(target: { useBitmapCoordinateSpace: (cb: (scope: BitmapCoordinatesRenderingScope) => void) => void }): void {
+  draw(target: CanvasRenderingTarget2D): void {
     target.useBitmapCoordinateSpace((scope) => {
       const { context: ctx, bitmapSize, horizontalPixelRatio, verticalPixelRatio } = scope;
       const deltaData = this._source._deltaData;
@@ -145,7 +149,7 @@ class DeltaPaneRenderer implements ISeriesPrimitivePaneRenderer {
 /**
  * Delta Pane View
  */
-class DeltaPaneView implements ISeriesPrimitivePaneView {
+class DeltaPaneView implements IPrimitivePaneView {
   private _source: DeltaPrimitive;
 
   constructor(source: DeltaPrimitive) {
@@ -154,7 +158,7 @@ class DeltaPaneView implements ISeriesPrimitivePaneView {
 
   update(): void {}
 
-  renderer(): ISeriesPrimitivePaneRenderer {
+  renderer(): IPrimitivePaneRenderer {
     return new DeltaPaneRenderer(this._source);
   }
 
@@ -197,7 +201,7 @@ export class DeltaPrimitive {
     this._requestUpdate = null;
   }
 
-  paneViews(): readonly ISeriesPrimitivePaneView[] {
+  paneViews(): readonly IPrimitivePaneView[] {
     return this._paneViews;
   }
 

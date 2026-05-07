@@ -40,10 +40,9 @@ export class RiskCalculatorRenderer {
       const entryY = this._data!.entryY;
       const stopLossY = this._data!.stopLossY;
       const targetY = this._data!.targetY;
+      const targetYs = this._data!.targetYs;
 
       if (entryY === null || stopLossY === null) return;
-
-      const isBuy = this._data!.side === 'BUY';
 
       // Draw Loss Zone (red/pink area)
       ctx.globalAlpha = 0.15;
@@ -56,14 +55,34 @@ export class RiskCalculatorRenderer {
       );
 
       // Draw Profit Zone (green area)
-      if (this._data!.showTarget && targetY !== null) {
+      if (this._data!.showTarget) {
         ctx.fillStyle = '#26a69a'; // Green color for profit
-        ctx.fillRect(
-          0,
-          Math.min(entryY, targetY) * pixelRatio,
-          width * pixelRatio,
-          Math.abs(entryY - targetY) * pixelRatio
-        );
+        
+        if (targetYs && targetYs.length > 0) {
+          // Shade to the furthest target
+          let furthestTargetY = entryY;
+          targetYs.forEach(ty => {
+            if (ty !== null) {
+              if (Math.abs(ty - entryY) > Math.abs(furthestTargetY - entryY)) {
+                furthestTargetY = ty;
+              }
+            }
+          });
+          
+          ctx.fillRect(
+            0,
+            Math.min(entryY, furthestTargetY) * pixelRatio,
+            width * pixelRatio,
+            Math.abs(entryY - furthestTargetY) * pixelRatio
+          );
+        } else if (targetY !== null) {
+          ctx.fillRect(
+            0,
+            Math.min(entryY, targetY) * pixelRatio,
+            width * pixelRatio,
+            Math.abs(entryY - targetY) * pixelRatio
+          );
+        }
       }
 
       ctx.globalAlpha = 1.0;
@@ -73,7 +92,7 @@ export class RiskCalculatorRenderer {
     const drawDot = (
       y: number | null,
       color: string,
-      lineType: 'entry' | 'stopLoss' | 'target'
+      lineType: string
     ) => {
       if (y === null) return;
 
@@ -104,7 +123,7 @@ export class RiskCalculatorRenderer {
     const drawLine = (
       y: number | null,
       color: string,
-      lineType: 'entry' | 'stopLoss' | 'target',
+      lineType: string,
       label: string,
       isDashed: boolean = false
     ) => {
@@ -121,7 +140,11 @@ export class RiskCalculatorRenderer {
       } else {
         if (lineType === 'entry') displayPrice = this._data!.entryPrice;
         else if (lineType === 'stopLoss') displayPrice = this._data!.stopLossPrice;
-        else if (lineType === 'target' && this._data!.targetPrice) displayPrice = this._data!.targetPrice;
+        else if (lineType === 'target') displayPrice = this._data!.targetPrice || 0;
+        else if (lineType.startsWith('target-')) {
+          const idx = parseInt(lineType.split('-')[1]);
+          displayPrice = this._data!.targets?.[idx]?.price || 0;
+        }
       }
 
       // Line style
@@ -188,21 +211,52 @@ export class RiskCalculatorRenderer {
         false
       );
 
-      // Draw Target line (dashed, read-only)
-      if (this._data!.showTarget && this._data!.targetPrice !== null) {
-        drawLine(
-          this._data!.targetY,
-          this._data!.colors.target,
-          'target',
-          'Target',
-          true
-        );
+      // Draw Target lines
+      if (this._data!.showTarget) {
+        // Draw legacy single target if it exists and no multi-targets
+        if (this._data!.targetPrice !== null && (!this._data!.targetYs || this._data!.targetYs.length === 0)) {
+          drawLine(
+            this._data!.targetY,
+            this._data!.colors.target,
+            'target',
+            'Target',
+            true
+          );
+        }
+        
+        // Draw multi-targets
+        if (this._data!.targetYs && this._data!.targetYs.length > 0) {
+          this._data!.targetYs.forEach((ty, idx) => {
+            if (ty !== null) {
+              drawLine(
+                ty,
+                this._data!.colors.target,
+                `target-${idx}`,
+                `T${idx + 1} (${this._data!.targets![idx].exitPercent}%)`,
+                true
+              );
+            }
+          });
+        }
       }
 
       // Step 3: Draw draggable dots on top of lines
       drawDot(this._data!.entryY, this._data!.colors.entry, 'entry');
       drawDot(this._data!.stopLossY, this._data!.colors.stopLoss, 'stopLoss');
-      // Target line is read-only, so no dot needed (or add a non-draggable dot)
+      
+      if (this._data!.showTarget) {
+        if (this._data!.targetY !== null && (!this._data!.targetYs || this._data!.targetYs.length === 0)) {
+          drawDot(this._data!.targetY, this._data!.colors.target, 'target');
+        }
+        
+        if (this._data!.targetYs && this._data!.targetYs.length > 0) {
+          this._data!.targetYs.forEach((ty, idx) => {
+            if (ty !== null) {
+              drawDot(ty, this._data!.colors.target, `target-${idx}`);
+            }
+          });
+        }
+      }
     });
   }
 }

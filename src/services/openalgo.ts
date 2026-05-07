@@ -182,6 +182,11 @@ class SharedWebSocketManager {
   private _wsWrapper: ManagedWebSocket | null = null;
   private _wasDisconnected: boolean = false;
 
+  // Subscription Queue to prevent flooding
+  private _subQueue: SymbolSubscription[] = [];
+  private _isProcessingQueue: boolean = false;
+  private _tickCount: number = 0;
+
   constructor() {
     // Listen for network recovery to trigger immediate reconnection
     subscribeToNetworkRecovery(() => {
@@ -194,6 +199,43 @@ class SharedWebSocketManager {
         this._ensureConnected();
       }
     });
+  }
+
+  private _enqueueSubscriptions(symbols: SymbolSubscription[]): void {
+    const uniqueNew = symbols.filter(s => 
+      !this._subQueue.some(qs => qs.symbol === s.symbol && qs.exchange === s.exchange)
+    );
+    if (uniqueNew.length === 0) return;
+    this._subQueue.push(...uniqueNew);
+    this._processQueue();
+  }
+
+  private _processQueue(): void {
+    if (this._isProcessingQueue || this._subQueue.length === 0) return;
+    if (!this._ws || this._ws.readyState !== WebSocket.OPEN || !this._authenticated) return;
+
+    this._isProcessingQueue = true;
+    const next = () => {
+      if (this._subQueue.length === 0 || !this._ws || this._ws.readyState !== WebSocket.OPEN || !this._authenticated) {
+        this._isProcessingQueue = false;
+        return;
+      }
+      const sym = this._subQueue.shift()!;
+      try {
+        this._ws.send(JSON.stringify({
+          action: 'subscribe',
+          symbol: sym.symbol,
+          exchange: sym.exchange || 'NSE',
+          mode: 2,
+        }));
+      } catch (e) {
+        this._subQueue.unshift(sym);
+        this._isProcessingQueue = false;
+        return;
+      }
+      setTimeout(next, 20);
+    };
+    next();
   }
 
   /**
@@ -233,9 +275,9 @@ class SharedWebSocketManager {
     // Ensure connection exists
     this._ensureConnected();
 
-    // If already authenticated, subscribe new symbols immediately
+    // If already authenticated, queue new symbols immediately
     if (this._authenticated && newSymbols.length > 0) {
-      this._subscribeSymbols(newSymbols);
+      this._enqueueSubscriptions(newSymbols);
     }
 
     // Mark subscription as ready
@@ -363,12 +405,25 @@ class SharedWebSocketManager {
           return;
         }
 
-        if (message.type === 'market_data' && message.symbol) {
+        if (
+          (message.type === 'market_data' || message.type === 'ticker' || message.type === 'quote') && 
+          message.symbol
+        ) {
+          // PERF: Ensure data property exists once, avoid spreading per-subscriber
+          if (!message.data) {
+            message.data = {};
+          }
+          
+          // Debug first few ticks to confirm data flow
+          if (Math.random() < 0.001) {
+            logger.debug('[SharedWS] Tick received:', message.symbol, message.data.ltp || message.data.last_price);
+          }
+
           const symbolKey = `${message.symbol}:${message.exchange || 'NSE'}`;
           for (const [id, sub] of this._subscribers) {
             if (sub.ready && sub.symbols.has(symbolKey)) {
               try {
-                sub.callback({ ...message, data: message.data || {} });
+                sub.callback(message);
               } catch (err) {
                 logger.error('[SharedWS] Callback error for subscriber', id, ':', err);
               }
@@ -513,7 +568,8 @@ export const subscribeToTicker = (
   return sharedWebSocket.subscribe(
     subscriptions,
     (message: WSMessage) => {
-      if (message.type !== 'market_data') return;
+      const isPriceUpdate = message.type === 'market_data' || message.type === 'ticker' || message.type === 'quote';
+      if (!isPriceUpdate || !message.symbol) return;
 
       const messageId = `${message.symbol}:${message.exchange || 'NSE'}`;
       if (messageId !== subscriptionId) return;

@@ -32,11 +32,11 @@ const OptionChainModal = lazy(() => import('./components/OptionChainModal/Option
 import { initTimeService, destroyTimeService } from './services/timeService';
 import { getJSON, setJSON, STORAGE_KEYS } from './services/storageService';
 import logger from './utils/logger';
+import { useWorkspaceStore } from './store/workspaceStore';
 import { useIsMobile, useCommandPalette, useGlobalShortcuts } from './hooks';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { useCloudWorkspaceSync } from './hooks/useCloudWorkspaceSync';
 import { useOILines } from './hooks/useOILines';
-import { useWatchlistHandlers } from './hooks/useWatchlistHandlers';
 import { useIndicatorHandlers } from './hooks/useIndicatorHandlers';
 import { useIntervalHandlers } from './hooks/useIntervalHandlers';
 import { useSymbolHandlers } from './hooks/useSymbolHandlers';
@@ -51,27 +51,33 @@ import { useTheme } from './context/ThemeContext';
 import { useUI } from './context/UIContext';
 import { useAlert } from './context/AlertContext';
 import { useUser } from './context/UserContext';
+import { useWatchlist } from './context/WatchlistContext';
+import { useWatchlistMonitor } from './context/WatchlistMonitorContext';
 import { OrderProvider } from './context/OrderContext';
 import { indicatorConfigs } from './components/IndicatorSettings/indicatorConfigs';
 import { useChart } from './hooks/useChart';
 
-import PositionTracker from './components/PositionTracker/PositionTracker';
 import GlobalAlertPopup from './components/GlobalAlertPopup/GlobalAlertPopup';
-import AccountPanel from './components/AccountPanel/AccountPanel';
-import TradingPanel from './components/TradingPanel/TradingPanel';
-import OrderEntryModal from './components/OrderEntryModal/OrderEntryModal';
-import ObjectTreePanel from './components/ObjectTree/ObjectTreePanel';
-import MarketScreenerPanel from './components/MarketScreener/MarketScreenerPanel';
 import CompareOptionsDialog from './components/Chart/CompareOptionsDialog';
+
+// Lazy load heavy components that are not needed on initial render
+const PositionTracker = lazy(() => import('./components/PositionTracker/PositionTracker'));
+const AccountPanel = lazy(() => import('./components/AccountPanel/AccountPanel'));
+const TradingPanel = lazy(() => import('./components/TradingPanel/TradingPanel'));
+const OrderEntryModal = lazy(() => import('./components/OrderEntryModal/OrderEntryModal'));
+const ObjectTreePanel = lazy(() => import('./components/ObjectTree/ObjectTreePanel'));
+const MarketScreenerPanel = lazy(() => import('./components/MarketScreener/MarketScreenerPanel'));
 
 // Lazy load additional heavy components
 const SectorHeatmapModal = lazy(() => import('./components/SectorHeatmap/SectorHeatmapModal'));
 const DepthOfMarket = lazy(() => import('./components/DepthOfMarket/DepthOfMarket'));
 const ANNScanner = lazy(() => import('./components/ANNScanner/ANNScanner'));
+const TradefinderScanner = lazy(() => import('./components/TradefinderScanner/TradefinderScanner'));
 const ChartTemplatesDialog = lazy(() => import('./components/ChartTemplates/ChartTemplatesDialog'));
 const ShortcutsSettings = lazy(() => import('./components/ShortcutsSettings/ShortcutsSettings'));
 const IndicatorSettingsDialog = lazy(() => import('./components/IndicatorSettings/IndicatorSettingsDialog'));
 const PineScriptEditor = lazy(() => import('./components/PineEditor/PineScriptEditor'));
+const FullScreener = lazy(() => import('./components/FullScreener/FullScreener'));
 import {
   VALID_INTERVAL_UNITS,
   DEFAULT_FAVORITE_INTERVALS,
@@ -81,7 +87,6 @@ import {
   safeParseJSON,
   ALERT_RETENTION_MS,
   DEFAULT_WATCHLIST,
-  migrateWatchlistData,
   DEFAULT_CHART_APPEARANCE,
   DEFAULT_DRAWING_OPTIONS,
   DRAWING_TOOLS,
@@ -110,11 +115,18 @@ const WorkspaceLoader = () => (
 // This ensures all useState initializers read from already-updated localStorage
 function AppContent({ isAuthenticated, setIsAuthenticated }) {
 
+  // Get state from workspace store with selectors for better reactivity
+  const activeChartId = useWorkspaceStore(state => state.activeChartId);
+  const charts = useWorkspaceStore(state => state.charts);
+  const layout = useWorkspaceStore(state => state.layout);
+  const setCharts = useWorkspaceStore(state => state.setCharts);
+  const setActiveChartId = useWorkspaceStore(state => state.setActiveChartId);
+  const setLayout = useWorkspaceStore(state => state.setLayout);
+  const isSyncEnabled = useWorkspaceStore(state => state.isSyncEnabled);
+  const syncOptions = useWorkspaceStore(state => state.syncOptions);
+
   // Multi-Chart State (Managed by useChart hook - ported from Context/Zustand)
   const {
-    layout, setLayout,
-    activeChartId, setActiveChartId,
-    charts, setCharts,
     activeChart,
     // Derived properties
     currentSymbol,
@@ -128,7 +140,10 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
     toggleIndicatorVisibility,
     updateIndicatorSettings,
     chartRefs, // Access to the global chart refs map
-    getChartRef
+    getChartRef,
+    // Sync
+    setIsSyncEnabled,
+    setSyncOptions
   } = useChart();
 
   // UI Context - Modal visibility states (centralized in UIContext)
@@ -648,7 +663,7 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
     handleAddCustomInterval,
     handleRemoveCustomInterval
   } = useIntervalHandlers({
-    setCharts,
+    setCharts: setCharts as any,
     activeChartId,
     favoriteIntervals,
     setFavoriteIntervals,
@@ -656,66 +671,42 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
     customIntervals,
     setCustomIntervals,
     currentInterval,
-    showToast
+    showToast,
+    isSyncEnabled,
+    syncOptions
   });
 
-  // Multiple Watchlists State
-  const [watchlistsState, setWatchlistsState] = useState(migrateWatchlistData);
-
-  // Derive active watchlist and symbols from state (memoized)
-  const activeWatchlist = React.useMemo(
-    () => watchlistsState.lists.find(wl => wl.id === watchlistsState.activeListId) || watchlistsState.lists[0],
-    [watchlistsState.lists, watchlistsState.activeListId]
-  );
-  const watchlistSymbols = React.useMemo(
-    () => activeWatchlist?.symbols || [],
-    [activeWatchlist]
-  );
-
-  // Derive favorite watchlists for quick-access bar (memoized)
-  const favoriteWatchlists = React.useMemo(
-    () => watchlistsState.lists.filter((wl: any) => wl.isFavorite),
-    [watchlistsState.lists]
-  );
-
-  // Create a stable key for symbol SET (ignores order and section markers, only changes on add/remove symbols)
-  // This prevents full reload when just reordering or adding sections
-  const watchlistSymbolsKey = React.useMemo(() => {
-    const symbolSet = (watchlistSymbols as any[])
-      // Filter out section markers
-      .filter((s: any) => !(typeof s === 'string' && s.startsWith('###')))
-      // Use composite key (symbol-exchange) to properly detect new symbols from different exchanges
-      .map((s: any) => typeof s === 'string' ? `${s}-NSE` : `${s.symbol}-${s.exchange || 'NSE'}`)
-      .sort()
-      .join(',');
-    return `${watchlistsState.activeListId}:${symbolSet}`;
-  }, [watchlistSymbols, watchlistsState.activeListId]);
-
-  const [watchlistData, setWatchlistData] = useState([]);
-  const [watchlistLoading, setWatchlistLoading] = useState(true);
-
-  // Watchlist handlers from custom hook
+  // Watchlist state from context
   const {
-    handleWatchlistReorder,
-    handleCreateWatchlist,
-    handleRenameWatchlist,
-    handleDeleteWatchlist,
-    handleSwitchWatchlist,
-    handleToggleWatchlistFavorite,
-    handleClearWatchlist,
-    handleCopyWatchlist,
-    handleExportWatchlist,
-    handleImportWatchlist,
-    handleAddSection,
-    handleToggleSection,
-    handleRenameSection,
-    handleDeleteSection
-  } = useWatchlistHandlers({
-    setWatchlistsState,
-    setWatchlistData,
     watchlistsState,
-    showToast
-  });
+    setWatchlistsState,
+    watchlistData,
+    setWatchlistData,
+    watchlistLoading,
+    setWatchlistLoading,
+    activeWatchlist,
+    watchlistSymbols,
+    favoriteWatchlists,
+    watchlistSymbolsKey,
+    // Handlers
+    reorderSymbols: handleWatchlistReorder,
+    createWatchlist: handleCreateWatchlist,
+    renameWatchlist: handleRenameWatchlist,
+    deleteWatchlist: handleDeleteWatchlist,
+    switchWatchlist: handleSwitchWatchlist,
+    toggleWatchlistFavorite: handleToggleWatchlistFavorite,
+    clearWatchlist: handleClearWatchlist,
+    copyWatchlist: handleCopyWatchlist,
+    exportWatchlist: handleExportWatchlist,
+    importSymbols: handleImportWatchlist,
+    addSection: handleAddSection,
+    toggleSection: handleToggleSection,
+    renameSection: handleRenameSection,
+    deleteSection: handleDeleteSection,
+    setSymbolFlag: handleSetSymbolFlag
+  } = useWatchlist();
+
+  const { scanningSymbols } = useWatchlistMonitor();
 
   // Indicator handlers extracted to hook
   const {
@@ -725,7 +716,7 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
     handleIndicatorVisibilityToggle,
     handleIndicatorSettings
   } = useIndicatorHandlers({
-    setCharts,
+    setCharts: setCharts as any,
     activeChartId
   });
 
@@ -738,12 +729,14 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
     handleCompareClick
   } = useSymbolHandlers({
     searchMode,
-    setCharts,
+    setCharts: setCharts as any,
     activeChartId,
     watchlistSymbols,
     setWatchlistsState,
     setIsSearchOpen,
-    setSearchMode
+    setSearchMode,
+    isSyncEnabled,
+    syncOptions
   });
 
   // Comparison symbol selection - intercept to show options dialog
@@ -955,6 +948,15 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
   // Ref to store current watchlist symbols - fixes stale closure in WebSocket callback
   const watchlistSymbolsRef = useRef([]);
 
+  // PERF FIX: Keep watchlistSymbolsRef in sync with watchlistSymbols
+  useEffect(() => {
+    watchlistSymbolsRef.current = watchlistSymbols;
+  }, [watchlistSymbols]);
+
+  // PERF: Batched watchlist update refs - accumulates WS ticks and flushes at 60fps
+  const pendingWatchlistUpdatesRef = useRef<Map<string, any>>(new Map());
+  const watchlistRafRef = useRef<number>(0);
+
 
 
   // Initialize TimeService on app mount - syncs time with WorldTimeAPI
@@ -974,15 +976,6 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
     };
   }, []);
 
-  // Persist multiple watchlists
-  useEffect(() => {
-    try {
-      localStorage.setItem('tv_watchlists', JSON.stringify(watchlistsState));
-    } catch (error) {
-      console.error('Failed to persist watchlists:', error);
-    }
-  }, [watchlistsState]);
-
   // Track previous symbols for incremental updates
   const prevSymbolsRef = React.useRef(null);
   const lastActiveListIdRef = React.useRef(null);
@@ -992,13 +985,25 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
   // Track previous prices for alert crossing detection (key: "SYMBOL:EXCHANGE", value: last price)
   // alertPricesRef is now from useAlert context
 
+  // Cache AudioContext to reuse for performance
+  const audioCtxRef = useRef<AudioContext | null>(null);
+
   // Helper to play alert alarm sound
   const playAlertSound = useCallback(() => {
     try {
-      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-      if (!AudioContext) return;
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioContextClass) return;
 
-      const ctx = new AudioContext();
+      if (!audioCtxRef.current) {
+        audioCtxRef.current = new AudioContextClass();
+      }
+      const ctx = audioCtxRef.current;
+      
+      // Resume if suspended (browser auto-play policy)
+      if (ctx.state === 'suspended') {
+        ctx.resume();
+      }
+
       const oscillator = ctx.createOscillator();
       const gainNode = ctx.createGain();
 
@@ -1019,8 +1024,8 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
 
       oscillator.start(now);
       oscillator.stop(now + 3.1);
-
-      oscillator.onended = () => ctx.close();
+      
+      // We no longer close the context so we can reuse it
     } catch (error) {
       console.error('Alert sound failed:', error);
     }
@@ -1054,17 +1059,11 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
 
   // Fetch watchlist data - only when authenticated (with incremental updates)
   useEffect(() => {
-    // DIAGNOSTIC - force console output (logger.debug may be suppressed)
-    console.log('=== WATCHLIST EFFECT ===');
-    console.log('isAuthenticated:', isAuthenticated);
-    console.log('watchlistSymbols count:', watchlistSymbols.length);
-    console.log('watchlistSymbolsKey:', watchlistSymbolsKey);
-
-    logger.debug('[Watchlist Effect] Running, isAuthenticated:', isAuthenticated);
+    logger.debug('[Watchlist Effect] Running, isAuthenticated:', isAuthenticated,
+      'symbols:', watchlistSymbols.length, 'key:', watchlistSymbolsKey);
 
     // Don't fetch if not authenticated yet
     if (isAuthenticated !== true) {
-      console.log('=== SKIPPING - NOT AUTHENTICATED ===');
       logger.debug('[Watchlist Effect] Skipping - not authenticated');
       setWatchlistLoading(false);
       return;
@@ -1177,14 +1176,12 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
 
     // Full reload function (for initial load or watchlist switch)
     const hydrateWatchlist = async () => {
-      console.log('=== HYDRATE WATCHLIST CALLED ===');
       logger.debug('[Watchlist] hydrateWatchlist called');
       watchlistFetchingRef.current = true; // Mark fetch in progress
       setWatchlistLoading(true);
       try {
         const symbolObjs = (watchlistSymbols as any[]).filter((s: any) => !(typeof s === 'string' && s.startsWith('###')));
-        console.log('symbolObjs to fetch:', symbolObjs.map((s: any) => typeof s === 'string' ? s : s.symbol));
-        logger.debug('[Watchlist] Processing symbols:', symbolObjs);
+        logger.debug('[Watchlist] Processing', symbolObjs.length, 'symbols');
 
         // Show cached data immediately for instant UX
         const symbolsWithCachedData = symbolObjs
@@ -1198,34 +1195,59 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
             up: s.up
           }));
 
-        logger.debug('[Watchlist] Symbols with cached data:', symbolsWithCachedData.length);
-
         // Show cached data immediately (user sees something instantly)
         if (symbolsWithCachedData.length > 0 && mounted) {
           setWatchlistData(symbolsWithCachedData);
           setWatchlistLoading(false);
           initialDataLoaded = true;
-          logger.debug('[Watchlist] Displayed cached data, now fetching fresh prices...');
+          logger.debug('[Watchlist] Displayed', symbolsWithCachedData.length, 'cached items, fetching fresh...');
         }
 
         // ALWAYS fetch fresh prices from API for ALL symbols
-        console.log('Fetching fresh quotes for', symbolObjs.length, 'symbols');
-        logger.debug('[Watchlist] Fetching fresh quotes for all', symbolObjs.length, 'symbols');
-        const fetchPromises = symbolObjs.map(fetchSymbol);
-        const results = await Promise.allSettled(fetchPromises);
-        const validResults = results
+        // INTELLIGENT BATCHING: Prioritize the first 30 symbols, then load the rest in small batches
+        const PRIORITY_COUNT = 30;
+        const BATCH_SIZE = 20;
+
+        const priorityObjs = symbolObjs.slice(0, PRIORITY_COUNT);
+        const remainingObjs = symbolObjs.slice(PRIORITY_COUNT);
+
+        logger.debug('[Watchlist] Fetching priority quotes for', priorityObjs.length, 'symbols');
+        const priorityResults = await Promise.allSettled(priorityObjs.map(fetchSymbol));
+        const validPriority = priorityResults
           .filter((r): r is PromiseFulfilledResult<any> => r.status === 'fulfilled' && r.value !== null)
           .map(r => r.value);
 
-        console.log('=== API RESULTS ===');
-        console.log('Total results:', results.length, 'Valid results:', validResults.length);
-        console.log('Sample result:', validResults[0]);
-        logger.debug('[Watchlist] Fresh quotes received:', validResults.length);
+        if (mounted && validPriority.length > 0) {
+          setWatchlistData(prev => {
+            const dataMap = new Map((prev as any[]).map(d => [`${d.symbol}-${d.exchange}`, d]));
+            validPriority.forEach(d => dataMap.set(`${d.symbol}-${d.exchange}`, d));
+            return Array.from(dataMap.values()) as any;
+          });
+          setWatchlistLoading(false);
+          initialDataLoaded = true;
+        }
 
-        if (mounted && validResults.length > 0) {
-          // Replace cached data with fresh data
-          console.log('=== SETTING WATCHLIST DATA ===', validResults.length, 'items');
-          setWatchlistData(validResults);
+        // Fetch remaining in throttled batches
+        if (remainingObjs.length > 0) {
+          (async () => {
+            for (let i = 0; i < remainingObjs.length; i += BATCH_SIZE) {
+              if (!mounted) break;
+              const batch = remainingObjs.slice(i, i + BATCH_SIZE);
+              const batchResults = await Promise.allSettled(batch.map(fetchSymbol));
+              const validBatch = batchResults
+                .filter((r): r is PromiseFulfilledResult<any> => r.status === 'fulfilled' && r.value !== null)
+                .map(r => r.value);
+
+              if (mounted && validBatch.length > 0) {
+                setWatchlistData(prev => {
+                  const dataMap = new Map((prev as any[]).map(d => [`${d.symbol}-${d.exchange}`, d]));
+                  validBatch.forEach(d => dataMap.set(`${d.symbol}-${d.exchange}`, d));
+                  return Array.from(dataMap.values()) as any;
+                });
+              }
+              if (i + BATCH_SIZE < remainingObjs.length) await new Promise(r => setTimeout(r, 500));
+            }
+          })();
         }
 
         // Always set up WebSocket for real-time updates (even if REST API failed)
@@ -1250,137 +1272,70 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
           );
 
           const allSymbolsToSubscribe = [...symbolObjs, ...additionalAlertSymbols];
-          console.log('=== SETTING UP WEBSOCKET ===');
-          console.log('Watchlist symbols:', symbolObjs.length);
-          console.log('Additional alert symbols:', additionalAlertSymbols.length);
-          console.log('Total subscribed:', allSymbolsToSubscribe.length);
+          logger.debug('[Watchlist] WS subscribing to', allSymbolsToSubscribe.length,
+            'symbols (', symbolObjs.length, 'watchlist +', additionalAlertSymbols.length, 'alerts)');
 
           ws = subscribeToMultiTicker(allSymbolsToSubscribe, (ticker) => {
             if (!mounted || !initialDataLoaded) return;
 
-            // === ALERT MONITORING: Check chart alerts with proper crossing detection ===
-            try {
-              const chartAlertsData = getJSON(STORAGE_KEYS.CHART_ALERTS, {});
-              const alertKey = `${ticker.symbol}:${ticker.exchange || 'NSE'}`;
-              const symbolAlerts = chartAlertsData[alertKey] || [];
+            // NOTE: Alert monitoring is handled by globalAlertMonitor service (services/globalAlertMonitor.ts)
+            // which runs on its own WebSocket subscription. No need to duplicate here.
 
-              const currentPrice = parseFloat(String(ticker.last));
-              if (!Number.isFinite(currentPrice)) return;
+            // === PERF OPTIMIZED: Batch watchlist updates via requestAnimationFrame ===
+            // Instead of calling setWatchlistData on every tick (250+ setState/sec),
+            // accumulate updates and flush once per animation frame (~60/sec)
+            const tickerExchange = ticker.exchange || 'NSE';
+            const updateKey = `${ticker.symbol}:${tickerExchange}`;
+            pendingWatchlistUpdatesRef.current.set(updateKey, {
+              symbol: ticker.symbol,
+              exchange: tickerExchange,
+              last: ticker.last.toFixed(2),
+              open: ticker.open,
+              volume: ticker.volume,
+              chg: ticker.chg.toFixed(2),
+              chgP: ticker.chgP.toFixed(2) + '%',
+              up: ticker.chg >= 0
+            });
 
-              // Get previous price for this symbol (for crossing detection)
-              const prevPrice = alertPricesRef.current.get(alertKey);
-              alertPricesRef.current.set(alertKey, currentPrice);
-
-              // Skip first tick (no previous price to compare)
-              if (prevPrice === undefined) return;
-
-              for (const alert of symbolAlerts) {
-                if (!alert.price || alert.triggered) continue;
-
-                const alertPrice = parseFloat(alert.price);
-                if (!Number.isFinite(alertPrice)) continue;
-
-                const condition = alert.condition || 'crossing';
-                let triggered = false;
-                let direction = '';
-
-                // Proper crossing detection
-                const crossedUp = prevPrice < alertPrice && currentPrice >= alertPrice;
-                const crossedDown = prevPrice > alertPrice && currentPrice <= alertPrice;
-
-                if (condition === 'crossing') {
-                  triggered = crossedUp || crossedDown;
-                  direction = crossedUp ? 'up' : 'down';
-                } else if (condition === 'crossing_up') {
-                  triggered = crossedUp;
-                  direction = 'up';
-                } else if (condition === 'crossing_down') {
-                  triggered = crossedDown;
-                  direction = 'down';
+            // Schedule a single flush per animation frame
+            if (!watchlistRafRef.current) {
+              watchlistRafRef.current = requestAnimationFrame(() => {
+                const updates = pendingWatchlistUpdatesRef.current;
+                if (updates.size === 0) {
+                  watchlistRafRef.current = 0;
+                  return;
                 }
 
-                if (triggered) {
-                  console.log('[Alerts] TRIGGERED:', ticker.symbol, 'crossed', direction, 'at', currentPrice, 'target:', alertPrice);
-
-                  // Mark as triggered in localStorage
-                  alert.triggered = true;
-                  chartAlertsData[alertKey] = symbolAlerts;
-                  setJSON(STORAGE_KEYS.CHART_ALERTS, chartAlertsData);
-
-                  // Play alarm sound
-                  playAlertSound();
-
-                  // Only show GlobalAlertPopup if NOT on the same chart
-                  const isOnCurrentChart =
-                    ticker.symbol === activeChartRef.current.symbol &&
-                    (ticker.exchange || 'NSE') === activeChartRef.current.exchange;
-
-                  if (!isOnCurrentChart) {
-                    setGlobalAlertPopups((prev: any) => [{
-                      id: `popup-${crypto.randomUUID()}-${alert.id}`,
-                      alertId: alert.id,
-                      symbol: ticker.symbol,
-                      exchange: ticker.exchange || 'NSE',
-                      price: alertPrice.toFixed(2),
-                      direction: direction,
-                      timestamp: Date.now()
-                    }, ...prev].slice(0, 5));
+                setWatchlistData(prev => {
+                  // Build an index map for O(1) lookups instead of O(n) findIndex per update
+                  const next = [...prev];
+                  const indexMap = new Map<string, number>();
+                  for (let i = 0; i < next.length; i++) {
+                    indexMap.set(`${next[i].symbol}:${next[i].exchange}`, i);
                   }
 
-                  // Log entry
-                  setAlertLogs(prev => [{
-                    id: crypto.randomUUID(),
-                    alertId: alert.id,
-                    symbol: ticker.symbol,
-                    exchange: ticker.exchange || 'NSE',
-                    message: `Alert: ${ticker.symbol} crossed ${direction} ${alertPrice.toFixed(2)}`,
-                    time: new Date().toISOString()
-                  }, ...prev]);
-                  setUnreadAlertCount(prev => prev + 1);
-                }
-              }
-            } catch (err) {
-              // Silent fail for alert check
-            }
+                  for (const [key, update] of updates) {
+                    const idx = indexMap.get(key);
+                    if (idx !== undefined) {
+                      next[idx] = { ...next[idx], ...update };
+                    } else {
+                      // Fallback: Create item from WebSocket data if quotes API failed
+                      const symbolData = watchlistSymbolsRef.current.find(s => {
+                        if (typeof s === 'string') return s === update.symbol;
+                        return s.symbol === update.symbol && s.exchange === update.exchange;
+                      });
+                      if (symbolData) {
+                        next.push(update);
+                      }
+                    }
+                  }
+                  return next;
+                });
 
-            // === Original watchlist update logic ===
-            setWatchlistData(prev => {
-              const tickerExchange = ticker.exchange || 'NSE';
-              const index = prev.findIndex(item =>
-                item.symbol === ticker.symbol && item.exchange === tickerExchange
-              );
-              if (index !== -1) {
-                const newData = [...prev];
-                newData[index] = {
-                  ...newData[index],
-                  last: ticker.last.toFixed(2),
-                  open: ticker.open,
-                  volume: ticker.volume,
-                  chg: ticker.chg.toFixed(2),
-                  chgP: ticker.chgP.toFixed(2) + '%',
-                  up: ticker.chg >= 0
-                };
-                return newData;
-              }
-              // Fallback: Create item from WebSocket data if quotes API failed
-              const symbolData = watchlistSymbolsRef.current.find(s => {
-                if (typeof s === 'string') return s === ticker.symbol;
-                return s.symbol === ticker.symbol && s.exchange === tickerExchange;
+                updates.clear();
+                watchlistRafRef.current = 0;
               });
-              if (symbolData) {
-                return [...prev, {
-                  symbol: ticker.symbol,
-                  exchange: tickerExchange,
-                  last: ticker.last.toFixed(2),
-                  open: ticker.open,
-                  volume: ticker.volume,
-                  chg: ticker.chg.toFixed(2),
-                  chgP: ticker.chgP.toFixed(2) + '%',
-                  up: ticker.chg >= 0
-                }];
-              }
-              return prev;
-            });
+            }
           });
         }
       } catch (error) {
@@ -1433,16 +1388,12 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
       (currentSymbolKeys.length > 0 && watchlistData.length === 0) ||
       addedSymbolKeys.length > 0;
 
-    console.log('=== UPDATE STRATEGY ===');
-    console.log('isInitialLoad:', isInitialLoad, 'isListSwitch:', isListSwitch);
-    console.log('watchlistData.length:', watchlistData.length, 'currentSymbolKeys.length:', currentSymbolKeys.length);
-    console.log('needsFullReload:', needsFullReload);
-    console.log('addedSymbolKeys:', addedSymbolKeys.length, 'removedSymbolKeys:', removedSymbolKeys.length);
+    logger.debug('[Watchlist] Strategy: initial=', isInitialLoad, 'switch=', isListSwitch,
+      'fullReload=', needsFullReload, 'added=', addedSymbolKeys.length, 'removed=', removedSymbolKeys.length);
 
     if (needsFullReload) {
       // Full reload for initial load, watchlist switch, empty data, or symbol additions
       // Symbol additions need full reload because WebSocket subscription must be refreshed
-      console.log('>>> Calling hydrateWatchlist()');
       hydrateWatchlist();
     } else if (removedSymbolKeys.length > 0) {
       // Only removals can be handled incrementally (no WebSocket change needed)
@@ -1456,10 +1407,15 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
 
     return () => {
       // Always cleanup previous effect - new effect will start fresh
-      // Each effect has its own mounted/abortController, so this is safe
       mounted = false;
       abortController.abort();
       watchlistFetchingRef.current = false;
+      // Cancel any pending RAF to prevent setState on unmounted component
+      if (watchlistRafRef.current) {
+        cancelAnimationFrame(watchlistRafRef.current);
+        watchlistRafRef.current = 0;
+        pendingWatchlistUpdatesRef.current.clear();
+      }
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.close();
       }
@@ -1785,6 +1741,69 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
   // Note: isWorkspaceLoaded check is no longer needed here
   // AppContent only mounts after App wrapper confirms cloud sync is complete
 
+  // === PERF: Stable callbacks to prevent inline arrow functions breaking React.memo ===
+
+  // Shared handler for navigating the active chart to a symbol — used by 7+ components
+  const handleSymbolNavigation = useCallback((symData: any) => {
+    const symbol = typeof symData === 'string' ? symData : symData.symbol;
+    const exchange = typeof symData === 'string' ? 'NSE' : (symData.exchange || 'NSE');
+    setCharts((prev: any[]) => prev.map((chart: any) =>
+      chart.id === activeChartId ? { ...chart, symbol, exchange, strategyConfig: null } : chart
+    ));
+  }, [activeChartId, setCharts]);
+
+  // Stable BottomBar callbacks
+  const handleTimeRangeChange = useCallback((range: string, interval: string) => {
+    setCurrentTimeRange(range);
+    if (interval) {
+      handleIntervalChange(interval);
+    }
+  }, [handleIntervalChange]);
+
+  const handleToggleLogScale = useCallback(() => setIsLogScale((prev: boolean) => !prev), []);
+  const handleToggleAutoScale = useCallback(() => setIsAutoScale((prev: boolean) => !prev), []);
+  const handleResetZoom = useCallback(() => {
+    const activeRef = (chartRefs as any).current[activeChartId];
+    if (activeRef) {
+      activeRef.resetZoom();
+    }
+  }, [activeChartId, chartRefs]);
+  const handleToggleAccountPanel = useCallback(() => setIsAccountPanelOpen((prev: boolean) => !prev), []);
+
+  // Stable Topbar inline callbacks
+  const handleStraddleClick = useCallback(() => setIsStraddlePickerOpen(true), [setIsStraddlePickerOpen]);
+  const handleIndicatorAlertClick = useCallback(() => {
+    setIndicatorAlertToEdit(null);
+    setIsIndicatorAlertOpen(true);
+  }, []);
+  const handleOptionsClick = useCallback(() => setIsOptionChainOpen(true), [setIsOptionChainOpen]);
+  const handleHeatmapClick = useCallback(() => setIsSectorHeatmapOpen(true), [setIsSectorHeatmapOpen]);
+  const handleTogglePineEditor = useCallback(() => setShowPineEditor((prev: boolean) => !prev), []);
+
+  // Memoize watchlist items — this was an IIFE in JSX that ran on every render
+  const memoizedWatchlistItems = React.useMemo(() => {
+    const symbols = (activeWatchlist?.symbols || []) as any[];
+    const dataMap = new Map(watchlistData.map((item: any) => [`${item.symbol}-${item.exchange}`, item]));
+
+    return symbols.map((item: any) => {
+      if (typeof item === 'string' && item.startsWith('###')) {
+        return item;
+      }
+      const symbolName = typeof item === 'string' ? item : item.symbol;
+      const exchange = typeof item === 'string' ? 'NSE' : (item.exchange || 'NSE');
+      const compositeKey = `${symbolName}-${exchange}`;
+      const liveData = dataMap.get(compositeKey);
+      if (liveData) {
+        return {
+          ...(typeof item === 'object' ? item : { symbol: item }),
+          ...liveData,
+          exchange
+        };
+      }
+      return item;
+    });
+  }, [activeWatchlist?.symbols, watchlistData]);
+
   // Show loading state while checking auth
   if (isAuthenticated === null) {
     return (
@@ -1844,17 +1863,12 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
         onWatchlistOverlayClick={() => setIsWatchlistVisible(false)}
         isAccountPanelOpen={isAccountPanelOpen}
         accountPanel={
+          <Suspense fallback={null}>
           <AccountPanel
             isOpen={isAccountPanelOpen}
             onClose={() => setIsAccountPanelOpen(false)}
             isAuthenticated={isAuthenticated}
-            onSymbolSelect={(symData: any) => {
-              const symbol = typeof symData === 'string' ? symData : symData.symbol;
-              const exchange = typeof symData === 'string' ? 'NSE' : (symData.exchange || 'NSE');
-              setCharts((prev: any[]) => prev.map((chart: any) =>
-                chart.id === activeChartId ? { ...chart, symbol, exchange, strategyConfig: null } : chart
-              ));
-            }}
+            onSymbolSelect={handleSymbolNavigation}
             isMinimized={isAccountPanelMinimized}
             onMinimize={handleAccountPanelMinimize}
             isMaximized={isAccountPanelMaximized}
@@ -1862,6 +1876,7 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
             isToolbarVisible={showDrawingToolbar}
             showToast={showToast}
           />
+          </Suspense>
         }
         isAccountPanelMinimized={isAccountPanelMinimized}
         isAccountPanelMaximized={isAccountPanelMaximized}
@@ -1905,18 +1920,19 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
             onLayoutChange={handleLayoutChange}
             onSaveLayout={handleSaveLayout}
             onSettingsClick={handleSettingsClick}
+            isSyncEnabled={isSyncEnabled}
+            syncOptions={syncOptions}
+            onSetSyncEnabled={setIsSyncEnabled}
+            onSetSyncOptions={setSyncOptions}
             onTemplatesClick={handleTemplatesClick}
             onChartTemplatesClick={handleChartTemplatesClick}
-            onStraddleClick={() => setIsStraddlePickerOpen(true)}
+            onStraddleClick={handleStraddleClick}
 
             strategyConfig={(activeChart as any)?.strategyConfig}
-            onIndicatorAlertClick={() => {
-              setIndicatorAlertToEdit(null); // Ensure creation mode
-              setIsIndicatorAlertOpen(true);
-            }}
-            onOptionsClick={() => setIsOptionChainOpen(true)}
-            onHeatmapClick={() => setIsSectorHeatmapOpen(true)}
-            onPineEditorClick={() => setShowPineEditor(prev => !prev)}
+            onIndicatorAlertClick={handleIndicatorAlertClick}
+            onOptionsClick={handleOptionsClick}
+            onHeatmapClick={handleHeatmapClick}
+            onPineEditorClick={handleTogglePineEditor}
             isPineEditorOpen={showPineEditor}
           />
         }
@@ -1942,25 +1958,15 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
         bottomBar={
           <BottomBar
             currentTimeRange={currentTimeRange}
-            onTimeRangeChange={(range, interval) => {
-              setCurrentTimeRange(range);
-              if (interval) {
-                handleIntervalChange(interval);
-              }
-            }}
+            onTimeRangeChange={handleTimeRangeChange}
             isLogScale={isLogScale}
             isAutoScale={isAutoScale}
-            onToggleLogScale={() => setIsLogScale(!isLogScale)}
-            onToggleAutoScale={() => setIsAutoScale(!isAutoScale)}
-            onResetZoom={() => {
-              const activeRef = (chartRefs as any).current[activeChartId];
-              if (activeRef) {
-                activeRef.resetZoom();
-              }
-            }}
+            onToggleLogScale={handleToggleLogScale}
+            onToggleAutoScale={handleToggleAutoScale}
+            onResetZoom={handleResetZoom}
             isToolbarVisible={showDrawingToolbar}
             isAccountPanelOpen={isAccountPanelOpen}
-            onToggleAccountPanel={() => setIsAccountPanelOpen(prev => !prev)}
+            onToggleAccountPanel={handleToggleAccountPanel}
           />
         }
         watchlist={
@@ -1968,38 +1974,9 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
             <Watchlist
               currentSymbol={currentSymbol}
               currentExchange={currentExchange}
-              items={(() => {
-                // Merge section markers with live data
-                // activeWatchlist.symbols contains both ###section markers and symbol objects
-                const symbols = (activeWatchlist?.symbols || []) as any[];
-                // Use composite key (symbol-exchange) to properly map live data for same symbol from different exchanges
-                const dataMap = new Map(watchlistData.map((item: any) => [`${item.symbol}-${item.exchange}`, item]));
-
-                return symbols.map((item: any) => {
-                  // If it's a section marker, keep it as-is
-                  if (typeof item === 'string' && item.startsWith('###')) {
-                    return item;
-                  }
-                  // Otherwise, find the live data for this symbol+exchange combination
-                  const symbolName = typeof item === 'string' ? item : item.symbol;
-                  const exchange = typeof item === 'string' ? 'NSE' : (item.exchange || 'NSE');
-                  const compositeKey = `${symbolName}-${exchange}`;
-                  // Merge live data with the item, preserving the original exchange
-                  const liveData = dataMap.get(compositeKey);
-                  if (liveData) {
-                    return { ...liveData, exchange }; // Ensure exchange is from original item
-                  }
-                  return item;
-                });
-              })() as any}
+              items={memoizedWatchlistItems as any}
               isLoading={watchlistLoading}
-              onSymbolSelect={(symData: any) => {
-                const symbol = typeof symData === 'string' ? symData : symData.symbol;
-                const exchange = typeof symData === 'string' ? 'NSE' : (symData.exchange || 'NSE');
-                setCharts((prev: any[]) => prev.map((chart: any) =>
-                  chart.id === activeChartId ? { ...chart, symbol: symbol, exchange: exchange, strategyConfig: null } : chart
-                ));
-              }}
+              onSymbolSelect={handleSymbolNavigation}
               onAddClick={handleAddClick}
               onRemoveClick={handleRemoveFromWatchlist}
               onReorder={handleWatchlistReorder}
@@ -2021,11 +1998,14 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
               onDeleteSection={handleDeleteSection}
               collapsedSections={(activeWatchlist as any)?.collapsedSections || []}
               onToggleSection={handleToggleSection}
+              // Flagging
+              onSetFlag={handleSetSymbolFlag}
               // Import/Export props
               onExport={handleExportWatchlist}
               onImport={handleImportWatchlist}
             />
           ) : activeRightPanel === 'objectTree' ? (
+            <Suspense fallback={null}>
             <ObjectTreePanel
               indicators={(activeChart as any)?.indicators || [] as any}
               drawings={liveDrawings}
@@ -2053,23 +2033,21 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
               symbol={currentSymbol}
               interval={currentInterval}
             />
+            </Suspense>
           ) : activeRightPanel === 'screener' ? (
+            <Suspense fallback={null}>
             <MarketScreenerPanel
               items={watchlistData}
               currentSymbol={currentSymbol}
               currentExchange={currentExchange}
-              onSymbolSelect={(symData: any) => {
-                const symbol = typeof symData === 'string' ? symData : symData.symbol;
-                const exchange = typeof symData === 'string' ? 'NSE' : (symData.exchange || 'NSE');
-                setCharts((prev: any[]) => prev.map((chart: any) =>
-                  chart.id === activeChartId ? { ...chart, symbol: symbol, exchange: exchange, strategyConfig: null } : chart
-                ));
-              }}
+              onSymbolSelect={handleSymbolNavigation}
             />
+            </Suspense>
           ) : activeRightPanel === 'alerts' ? (
             <AlertsPanel
               alerts={alerts as any}
               logs={alertLogs as any}
+              scanningSymbols={scanningSymbols}
               onRemoveAlert={handleRemoveAlert}
               onRestartAlert={handleRestartAlert}
               onPauseAlert={handlePauseAlert}
@@ -2104,6 +2082,7 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
               }}
             />
           ) : activeRightPanel === 'position_tracker' ? (
+            <Suspense fallback={null}>
             <PositionTracker
               sourceMode={positionTrackerSettings.sourceMode}
               customSymbols={positionTrackerSettings.customSymbols}
@@ -2111,15 +2090,10 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
               isLoading={watchlistLoading}
               onSourceModeChange={(mode) => setPositionTrackerSettings(prev => ({ ...prev, sourceMode: mode }))}
               onCustomSymbolsChange={(symbols) => setPositionTrackerSettings(prev => ({ ...prev, customSymbols: symbols }))}
-              onSymbolSelect={(symData: any) => {
-                const symbol = typeof symData === 'string' ? symData : symData.symbol;
-                const exchange = typeof symData === 'string' ? 'NSE' : (symData.exchange || 'NSE');
-                setCharts((prev: any[]) => prev.map((chart: any) =>
-                  chart.id === activeChartId ? { ...chart, symbol: symbol, exchange: exchange, strategyConfig: null } : chart
-                ));
-              }}
+              onSymbolSelect={handleSymbolNavigation}
               isAuthenticated={isAuthenticated}
             />
+            </Suspense>
           ) : activeRightPanel === 'ann_scanner' ? (
             <Suspense fallback={<div style={{ padding: 20 }}>Loading Scanner...</div>}>
               <ANNScanner
@@ -2129,13 +2103,7 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
                     ? { symbol: s, exchange: 'NSE' }
                     : { symbol: s.symbol, exchange: s.exchange || 'NSE' }
                   )}
-                onSymbolSelect={(symData: any) => {
-                  const symbol = typeof symData === 'string' ? symData : symData.symbol;
-                  const exchange = typeof symData === 'string' ? 'NSE' : (symData.exchange || 'NSE');
-                  setCharts((prev: any[]) => prev.map((chart: any) =>
-                    chart.id === activeChartId ? { ...chart, symbol: symbol, exchange: exchange, strategyConfig: null } : chart
-                  ));
-                }}
+                onSymbolSelect={handleSymbolNavigation}
                 isAuthenticated={isAuthenticated}
                 onAddToWatchlist={(symbolData: any) => {
                   const { symbol, exchange } = symbolData;
@@ -2161,6 +2129,12 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
                 onCancelScan={cancelAnnScan}
               />
             </Suspense>
+          ) : activeRightPanel === 'tradefinder' ? (
+            <Suspense fallback={<div style={{ padding: 20 }}>Loading Tradefinder...</div>}>
+              <TradefinderScanner
+                isAuthenticated={isAuthenticated}
+              />
+            </Suspense>
           ) : activeRightPanel === 'dom' ? (
             <Suspense fallback={<div style={{ padding: 20 }}>Loading DOM...</div>}>
               <DepthOfMarket
@@ -2171,6 +2145,7 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
               />
             </Suspense>
           ) : activeRightPanel === 'trade' ? (
+            <Suspense fallback={null}>
             <TradingPanel
               symbol={currentSymbol}
               exchange={currentExchange}
@@ -2181,6 +2156,7 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
               initialPrice={tradingPanelConfig.price}
               initialOrderType={tradingPanelConfig.orderType as any}
             />
+            </Suspense>
           ) : null
         }
         rightToolbar={
@@ -2194,15 +2170,15 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
           <ChartGrid
             charts={charts as any}
             layout={layout as any}
-            activeChartId={activeChartId as any}
+            activeChartId={activeChartId}
             onActiveChartChange={setActiveChartId as any}
             onMaximizeChart={handleMaximizeChart as any}
             chartRefs={chartRefs as any}
-            onAlertsSync={handleChartAlertsSync as any}
+            onAlertsSync={handleChartAlertsSync}
             onDrawingsSync={handleDrawingsSync}
-            onAlertTriggered={handleChartAlertTriggered as any}
+            onAlertTriggered={handleChartAlertTriggered}
             onReplayModeChange={handleReplayModeChange as any}
-            onOHLCDataUpdate={handleOHLCDataUpdate as any}
+            onOHLCDataUpdate={handleOHLCDataUpdate}
             // Common props
             chartType={chartType}
             // indicators={indicators} // Handled per chart now
@@ -2245,6 +2221,7 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
         }
       />
       {/* Order Entry Modal (Popup) */}
+      <Suspense fallback={null}>
       <OrderEntryModal
         isOpen={tradingPanelConfig.isOpen && tradingPanelConfig.isModal}
         onClose={() => setTradingPanelConfig(prev => ({ ...prev, isOpen: false, isModal: false }))}
@@ -2255,6 +2232,7 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
         initialPrice={tradingPanelConfig.price}
         initialOrderType={tradingPanelConfig.orderType as any}
       />
+      </Suspense>
 
       <SymbolSearch
         isOpen={isSearchOpen}
@@ -2315,11 +2293,7 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
       <GlobalAlertPopup
         alerts={globalAlertPopups as any}
         onDismiss={(alertId: any) => setGlobalAlertPopups((prev: any[]) => prev.filter((a: any) => a.id !== alertId))}
-        onClick={(symbolData: any) => {
-          setCharts((prev: any[]) => prev.map((chart: any) =>
-            chart.id === activeChartId ? { ...chart, symbol: symbolData.symbol, exchange: symbolData.exchange, strategyConfig: null } : chart
-          ));
-        }}
+        onClick={handleSymbolNavigation}
       />
       <AlertDialog
         isOpen={isAlertOpen}
@@ -2480,11 +2454,7 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
               setIsSectorHeatmapOpen(false);
             }}
             onSymbolSelect={(symData: any) => {
-              const symbol = typeof symData === 'string' ? symData : symData.symbol;
-              const exchange = typeof symData === 'string' ? 'NSE' : (symData.exchange || 'NSE');
-              setCharts((prev: any[]) => prev.map((chart: any) =>
-                chart.id === activeChartId ? { ...chart, symbol: symbol, exchange: exchange, strategyConfig: null } : chart
-              ));
+              handleSymbolNavigation(symData);
               setIsSectorHeatmapOpen(false);
             }}
           />

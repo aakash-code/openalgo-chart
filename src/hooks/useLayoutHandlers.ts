@@ -7,6 +7,7 @@ import { useCallback, type Dispatch, type SetStateAction, type MutableRefObject 
 import { setJSON, get, STORAGE_KEYS } from '../services/storageService';
 import { saveUserPreferences } from '../services/openalgo';
 import logger from '../utils/logger';
+import { LAYOUTS, type LayoutType } from '../types/domain/workspace';
 
 // ==================== TYPES ====================
 
@@ -117,11 +118,16 @@ export const useLayoutHandlers = ({
   showSnapshotToast,
   showToast,
 }: UseLayoutHandlersParams): UseLayoutHandlersReturn => {
-  // Handle layout change (1, 2, 3, 4 charts)
+  // Handle layout change (1, 2, 3, 4, 6, 8, 10 charts)
   const handleLayoutChange = useCallback(
     (newLayout: string) => {
-      setLayout(newLayout);
-      const count = parseInt(newLayout, 10);
+      setLayout(newLayout as LayoutType);
+      
+      const config = LAYOUTS[newLayout as LayoutType];
+      if (!config) return;
+
+      const count = config.rows * config.cols;
+      
       setCharts((prev) => {
         const newCharts = [...prev];
         if (newCharts.length < count) {

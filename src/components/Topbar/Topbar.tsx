@@ -6,6 +6,7 @@ import { intervalToSeconds } from '../../utils/timeframes';
 import { getIntervals } from '../../services/openalgo';
 import { logger } from '../../utils/logger';
 import Tooltip from '../Tooltip/Tooltip';
+import { useWatchlistMonitor } from '../../context/WatchlistMonitorContext';
 import {
     Plus, Star, Trash2, X, AlertCircle, Loader2, Layout as LayoutIcon, BarChart3, Bookmark
 } from 'lucide-react';
@@ -87,6 +88,16 @@ export interface TopbarProps {
     onAddIndicator?: (indicator: string) => void;
     onPineEditorClick?: () => void;
     isPineEditorOpen?: boolean;
+    // Sync props
+    isSyncEnabled?: boolean;
+    syncOptions?: {
+        symbol: boolean;
+        interval: boolean;
+        crosshair: boolean;
+        time: boolean;
+    };
+    onSetSyncEnabled?: (enabled: boolean) => void;
+    onSetSyncOptions?: (options: any) => void;
 }
 
 const Topbar: React.FC<TopbarProps> = ({
@@ -100,8 +111,14 @@ const Topbar: React.FC<TopbarProps> = ({
     isReplayMode = false, onSettingsClick, onTemplatesClick, onChartTemplatesClick,
     onStraddleClick, strategyConfig = null,
     onOptionsClick, onHeatmapClick, onAddIndicator,
-    onPineEditorClick, isPineEditorOpen = false
+    onPineEditorClick, isPineEditorOpen = false,
+    // Sync props
+    isSyncEnabled = false,
+    syncOptions = { symbol: true, interval: true, crosshair: true, time: true },
+    onSetSyncEnabled,
+    onSetSyncOptions,
 }) => {
+    const { isScanning, scanningSymbols } = useWatchlistMonitor();
 
     const [showIndicators, setShowIndicators] = useState(false);
     const [showTimeframes, setShowTimeframes] = useState(false);
@@ -476,13 +493,23 @@ const Topbar: React.FC<TopbarProps> = ({
                                                     <div className={styles.icon}>
                                                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 18 18" width="18" height="18"><path fill="currentColor" d="M3.5 8a4.5 4.5 0 1 1 9 0 4.5 4.5 0 0 1-9 0ZM8 2a6 6 0 1 0 3.65 10.76l3.58 3.58 1.06-1.06-3.57-3.57A6 6 0 0 0 8 2Z"></path></svg>
                                                     </div>
-                                                    <div className={classNames(styles.text, styles.uppercase)}>{symbol}</div>
-                                                </button>
-                                                <button
+                                                    <div className={styles.text}>{symbol}</div>
+                                                    </button>
+
+                                                    {isScanning && (
+                                                    <Tooltip content={`Scanner Active: Monitoring ${scanningSymbols.length} stocks`} position="bottom">
+                                                        <div className={styles.scannerStatusWrap}>
+                                                            <div className={styles.scannerPulse}></div>
+                                                        </div>
+                                                    </Tooltip>
+                                                    )}
+
+                                                    <button
                                                     className={classNames(styles.button, styles.iconButton)}
                                                     aria-label="Compare or Add Symbol"
                                                     onClick={onCompareClick}
-                                                >
+                                                    >
+
                                                     <div className={styles.icon}>
                                                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28" width="28" height="28"><path fill="currentColor" d="M13.5 6a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17zM4 14.5a9.5 9.5 0 1 1 19 0 9.5 9.5 0 0 1-19 0z"></path><path fill="currentColor" d="M9 14h4v-4h1v4h4v1h-4v4h-1v-4H9v-1z"></path></svg>
                                                     </div>
@@ -724,6 +751,23 @@ const Topbar: React.FC<TopbarProps> = ({
                                                             <div className={styles.dropdownSection}>Volume</div>
                                                             <div className={styles.dropdownItem} onClick={(e) => { e.stopPropagation(); onAddIndicator?.('volume'); }}>Volume</div>
                                                             <div className={styles.dropdownItem} onClick={(e) => { e.stopPropagation(); onAddIndicator?.('vwap'); }}>VWAP</div>
+                                                            <div className={styles.dropdownItem} onClick={(e) => { e.stopPropagation(); onAddIndicator?.('cvd'); }}>Cumulative Volume Delta</div>
+                                                            <div className={styles.dropdownDivider}></div>
+                                                            <div className={styles.dropdownSection}>Market Profile</div>
+                                                            <div className={styles.dropdownItem} onClick={(e) => { e.stopPropagation(); onAddIndicator?.('tpo'); }}>TPO Profile (30m)</div>
+                                                            <div className={styles.dropdownDivider}></div>
+                                                            <div className={styles.dropdownSection}>Intelligence</div>
+                                                            <div className={styles.dropdownItem} onClick={(e) => { e.stopPropagation(); onAddIndicator?.('patternRecognition'); }}>Smart Pattern Recognition</div>
+                                                            <div className={styles.dropdownDivider}></div>
+                                                            <div className={styles.dropdownSection}>Strategy</div>
+                                                            <div className={styles.dropdownItem} onClick={(e) => { e.stopPropagation(); onAddIndicator?.('firstCandle'); }}>First Red Candle</div>
+                                                            <div className={styles.dropdownItem} onClick={(e) => { e.stopPropagation(); onAddIndicator?.('volumetricCandlePair'); }}>Volumetric Candle Pair</div>
+                                                            <div className={styles.dropdownItem} onClick={(e) => { e.stopPropagation(); onAddIndicator?.('institutionalVolumetric'); }}>Institutional Volumetric</div>
+                                                            <div className={styles.dropdownItem} onClick={(e) => { e.stopPropagation(); onAddIndicator?.('rangeBreakout'); }}>Range Breakout</div>
+                                                            <div className={styles.dropdownItem} onClick={(e) => { e.stopPropagation(); onAddIndicator?.('annStrategy'); }}>ANN Strategy</div>
+                                                            <div className={styles.dropdownDivider}></div>
+                                                            <div className={styles.dropdownSection}>Risk Management</div>
+                                                            <div className={styles.dropdownItem} onClick={(e) => { e.stopPropagation(); onAddIndicator?.('riskCalculator'); }}>Risk Calculator</div>
                                                         </div>
                                                     )}
                                                 </div>
@@ -845,9 +889,58 @@ const Topbar: React.FC<TopbarProps> = ({
                                                                 <span className={styles.icon}><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28" width="28" height="28"><path fill="currentColor" d="M3 3h10v10H3V3zm12 0h10v10H15V3zM3 15h10v10H3V15zm12 0h10v10H15V15z"></path></svg></span>
                                                                 <span>4 Charts</span>
                                                             </div>
-                                                        </div>
-                                                    )}
-                                                </div>
+                                                            <div className={classNames(styles.dropdownItem, styles.withIcon, { [styles.active]: layout === '6' })} onClick={() => { onLayoutChange?.('6'); setShowLayoutMenu(false); }}>
+                                                                <span className={styles.icon}><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28" width="28" height="28"><path fill="currentColor" d="M3 3h6v10H3V3zm8 0h6v10h-6V3zm8 0h6v10h-6V3zM3 15h6v10H3V15zm8 0h6v10h-6V15zm8 0h6v10h-6V15z"></path></svg></span>
+                                                                <span>6 Charts</span>
+                                                            </div>
+                                                            <div className={classNames(styles.dropdownItem, styles.withIcon, { [styles.active]: layout === '8' })} onClick={() => { onLayoutChange?.('8'); setShowLayoutMenu(false); }}>
+                                                                <span className={styles.icon}><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28" width="28" height="28"><path fill="currentColor" d="M3 3h4v10H3V3zm6 0h4v10H9V3zm6 0h4v10h-4V3zm6 0h4v10h-4V3zM3 15h4v10H3V15zm6 0h4v10H9V15zm6 0h4v10h-4V15zm6 0h4v10h-4V15z"></path></svg></span>
+                                                                <span>8 Charts</span>
+                                                            </div>
+                                                            <div className={classNames(styles.dropdownItem, styles.withIcon, { [styles.active]: layout === '10' })} onClick={() => { onLayoutChange?.('10'); setShowLayoutMenu(false); }}>
+                                                                <span className={styles.icon}><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28" width="28" height="28"><path fill="currentColor" d="M3 3h3v10H3V3zm5 0h3v10H8V3zm5 0h3v10h-3V3zm5 0h3v10h-3V3zm5 0h3v10h-3V3zM3 15h3v10H3V15zm5 0h3v10H8V15zm5 0h3v10h-3V15zm5 0h3v10h-3V15zm5 0h3v10h-3V15z"></path></svg></span>
+                                                                <span>10 Charts</span>
+                                                            </div>
+                                                            <div className={classNames(styles.dropdownItem, styles.withIcon, { [styles.active]: layout === '2v' })} onClick={() => { onLayoutChange?.('2v'); setShowLayoutMenu(false); }}>
+                                                                <span className={styles.icon}><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28" width="28" height="28"><path fill="currentColor" d="M3 3h22v10H3V3zm0 12h22v10H3V15z"></path></svg></span>
+                                                                <span>2 Vertical</span>
+                                                            </div>
+
+                                                            <div className={styles.dropdownDivider}></div>
+                                                            <div className={styles.dropdownSection}>Chart Sync</div>
+                                                            <div className={classNames(styles.dropdownItem)} onClick={() => onSetSyncEnabled?.(!isSyncEnabled)}>
+                                                                <div style={{ display: 'flex', alignItems: 'center', width: '100%', justifyContent: 'space-between' }}>
+                                                                    <span>Enable Sync</span>
+                                                                    <div className={classNames(styles.toggle, { [styles.active]: isSyncEnabled })}>
+                                                                        <div className={styles.toggleThumb}></div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+
+                                                            {isSyncEnabled && (
+                                                                <>
+                                                                    <div className={classNames(styles.dropdownItem)} onClick={() => onSetSyncOptions?.({ symbol: !syncOptions.symbol })}>
+                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                            <input type="checkbox" checked={syncOptions.symbol} readOnly />
+                                                                            <span>Symbol</span>
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className={classNames(styles.dropdownItem)} onClick={() => onSetSyncOptions?.({ interval: !syncOptions.interval })}>
+                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                            <input type="checkbox" checked={syncOptions.interval} readOnly />
+                                                                            <span>Interval</span>
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className={classNames(styles.dropdownItem)} onClick={() => onSetSyncOptions?.({ crosshair: !syncOptions.crosshair })}>
+                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                            <input type="checkbox" checked={syncOptions.crosshair} readOnly />
+                                                                            <span>Crosshair</span>
+                                                                        </div>
+                                                                    </div>
+                                                                </>
+                                                            )}
+                                                            </div>
+                                                            )}                                                </div>
                                                 <button className={classNames(styles.button)} aria-label="Save" onClick={onSaveLayout}>
                                                     <div className={styles.text}>Save</div>
                                                 </button>
@@ -959,4 +1052,4 @@ const Topbar: React.FC<TopbarProps> = ({
     );
 };
 
-export default Topbar;
+export default React.memo(Topbar);

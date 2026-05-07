@@ -25,7 +25,8 @@ interface AlertLog {
     id: string;
     symbol: string;
     exchange?: string;
-    time: string | number;
+    time?: string | number;
+    timestamp?: string | number;
     message: string;
 }
 
@@ -37,6 +38,7 @@ interface NavigateInfo {
 export interface AlertsPanelProps {
     alerts: Alert[];
     logs: AlertLog[];
+    scanningSymbols?: string[];
     onRemoveAlert: (id: string) => void;
     onRestartAlert: (id: string) => void;
     onPauseAlert: (id: string) => void;
@@ -47,13 +49,14 @@ export interface AlertsPanelProps {
 const AlertsPanel: React.FC<AlertsPanelProps> = ({
     alerts,
     logs,
+    scanningSymbols = [],
     onRemoveAlert,
     onRestartAlert,
     onPauseAlert,
     onNavigate,
     onEditAlert
 }) => {
-    const [activeTab, setActiveTab] = useState<'alerts' | 'log'>('alerts');
+    const [activeTab, setActiveTab] = useState<'alerts' | 'log' | 'scanner'>('alerts');
     const [focusedIndex, setFocusedIndex] = useState(-1);
     const listRef = useRef<HTMLDivElement>(null);
 
@@ -116,6 +119,13 @@ const AlertsPanel: React.FC<AlertsPanelProps> = ({
                 >
                     Log
                     {logs.length > 0 && <span className={styles.logCount}>{logs.length}</span>}
+                </div>
+                <div
+                    className={classNames(styles.tab, { [styles.activeTab]: activeTab === 'scanner' })}
+                    onClick={() => setActiveTab('scanner')}
+                >
+                    Scanner
+                    {scanningSymbols.length > 0 && <span className={styles.logCount}>{scanningSymbols.length}</span>}
                 </div>
             </div>
 
@@ -217,7 +227,7 @@ const AlertsPanel: React.FC<AlertsPanelProps> = ({
                             })
                         )}
                     </div>
-                ) : (
+                ) : activeTab === 'log' ? (
                     <div
                         className={styles.list}
                         ref={listRef}
@@ -235,7 +245,7 @@ const AlertsPanel: React.FC<AlertsPanelProps> = ({
                                         <span className={styles.symbol}>
                                             {log.symbol}{log.exchange ? `:${log.exchange}` : ''}
                                         </span>
-                                        <span className={styles.time}>{new Date(log.time).toLocaleTimeString()}</span>
+                                        <span className={styles.time}>{new Date(log.time || log.timestamp || 0).toLocaleTimeString()}</span>
                                     </div>
                                     <div className={styles.message}>
                                         {log.message}
@@ -244,10 +254,29 @@ const AlertsPanel: React.FC<AlertsPanelProps> = ({
                             ))
                         )}
                     </div>
+                ) : (
+                    <div className={styles.list}>
+                        <div className={styles.scannerHeader}>
+                            <div className={styles.scannerStatus}>
+                                <div className={styles.pulse}></div>
+                                <span>Scanning {scanningSymbols.length} Stocks</span>
+                            </div>
+                            <p className={styles.scannerDesc}>
+                                Monitoring watchlist for 4-EMA alignment and Volumetric breakouts in real-time.
+                            </p>
+                        </div>
+                        <div className={styles.symbolGrid}>
+                            {scanningSymbols.map(sym => (
+                                <div key={sym} className={styles.scanningSymbol}>
+                                    {sym}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
                 )}
             </div>
         </div>
     );
 };
 
-export default AlertsPanel;
+export default React.memo(AlertsPanel);

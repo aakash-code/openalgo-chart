@@ -95,6 +95,7 @@ export const IndicatorDropdown: React.FC<IndicatorDropdownProps> = ({ position, 
             <SectionHeader>Volume</SectionHeader>
             <IndicatorItem id="volume" label="Volume" onClick={handleClick} />
             <IndicatorItem id="vwap" label="VWAP" onClick={handleClick} />
+            <IndicatorItem id="cvd" label="Cumulative Volume Delta" onClick={handleClick} />
 
             <DropdownDivider />
             <SectionHeader>Market Profile</SectionHeader>
@@ -103,6 +104,8 @@ export const IndicatorDropdown: React.FC<IndicatorDropdownProps> = ({ position, 
             <DropdownDivider />
             <SectionHeader>Strategy</SectionHeader>
             <IndicatorItem id="firstCandle" label="First Red Candle" onClick={handleClick} />
+            <IndicatorItem id="volumetricCandlePair" label="Volumetric Candle Pair" onClick={handleClick} />
+            <IndicatorItem id="institutionalVolumetric" label="Institutional Volumetric" onClick={handleClick} />
             <IndicatorItem id="rangeBreakout" label="Range Breakout" onClick={handleClick} />
             <IndicatorItem id="annStrategy" label="ANN Strategy" onClick={handleClick} />
 

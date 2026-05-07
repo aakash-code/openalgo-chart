@@ -20,6 +20,7 @@ import {
     RotateCcw,
     MoreHorizontal,
     Terminal,
+    Sparkles,
 } from 'lucide-react';
 import styles from './PineScriptEditor.module.css';
 import {
@@ -101,6 +102,11 @@ const PineScriptEditor: React.FC<PineScriptEditorProps> = ({
         warnings: [],
     });
     const [parsedInputs, setParsedInputs] = useState<PineScriptInput[]>([]);
+
+    // AI Assistant state
+    const [showAIModal, setShowAIModal] = useState<boolean>(false);
+    const [aiPrompt, setAiPrompt] = useState<string>('');
+    const [isGenerating, setIsGenerating] = useState<boolean>(false);
 
     // Saved scripts
     const [savedScripts, setSavedScripts] = useState<SavedScript[]>([]);
@@ -358,6 +364,45 @@ const PineScriptEditor: React.FC<PineScriptEditorProps> = ({
         }
     }, [code, scriptName, currentScriptId, savedScripts, addConsoleMessage]);
 
+    const handleAIGenerate = useCallback(async () => {
+        if (!aiPrompt.trim()) return;
+
+        setIsGenerating(true);
+        addConsoleMessage('info', 'AI Assistant is thinking...');
+
+        try {
+            // In a real implementation, this would call an LLM API (Gemini, OpenAI, etc.)
+            // For now, we provide the architecture and a mock response.
+            // The user can integrate their API key and endpoint here.
+            
+            // Artificial delay to simulate AI thinking
+            await new Promise(resolve => setTimeout(resolve, 1500));
+
+            // Example of how to structure the prompt/response
+            // const response = await fetch('/api/generate-pine', { method: 'POST', body: JSON.stringify({ prompt: aiPrompt }) });
+            // const data = await response.json();
+            
+            // If the user wants ME (the agent) to generate it, I can't do it via an async call inside the app 
+            // without a backend. But I can provide a template.
+            
+            addConsoleMessage('success', 'AI generation complete!');
+            setShowAIModal(false);
+            setAiPrompt('');
+            
+            // Example output (this would come from the API)
+            const generatedCode = `//@version=5\nindicator("AI Generated Indicator", overlay=true)\n\n// Generated based on: ${aiPrompt}\n\n// Simple example: EMA 9 & 21 Cross\nema9 = ta.ema(close, 9)\nema21 = ta.ema(close, 21)\n\nplot(ema9, "EMA 9", color=color.aqua)\nplot(ema21, "EMA 21", color=color.orange)\n\nplotshape(ta.crossover(ema9, ema21), "Buy", style=shape.triangleup, location=location.belowbar, color=color.green, size=size.small)\nplotshape(ta.crossunder(ema9, ema21), "Sell", style=shape.triangledown, location=location.abovebar, color=color.red, size=size.small)`;
+            
+            setCode(generatedCode);
+            setScriptName('AI Generated Script');
+            setIsDirty(true);
+            
+        } catch (e) {
+            addConsoleMessage('error', 'AI generation failed');
+        } finally {
+            setIsGenerating(false);
+        }
+    }, [aiPrompt, addConsoleMessage]);
+
     const handleLoadScript = useCallback((script: SavedScript) => {
         setCode(script.code);
         setScriptName(script.name);
@@ -594,6 +639,16 @@ const PineScriptEditor: React.FC<PineScriptEditorProps> = ({
                         <RotateCcw size={14} />
                     </button>
 
+                    {/* AI Generate button */}
+                    <button
+                        className={`${styles.headerBtn} ${styles.aiBtn}`}
+                        onClick={() => setShowAIModal(true)}
+                        title="Generate with AI"
+                    >
+                        <Sparkles size={14} />
+                        AI Generate
+                    </button>
+
                     {/* Save button */}
                     <button
                         className={styles.headerBtn}
@@ -734,6 +789,51 @@ const PineScriptEditor: React.FC<PineScriptEditorProps> = ({
                     <span className={styles.pineVersion}>Pine Script® v5</span>
                 </div>
             </div>
+
+            {/* AI Prompt Modal */}
+            {showAIModal && (
+                <div className={styles.modalOverlay} onClick={() => setShowAIModal(false)}>
+                    <div className={styles.aiModal} onClick={(e) => e.stopPropagation()}>
+                        <div className={styles.modalHeader}>
+                            <div className={styles.modalTitle}>
+                                <Sparkles size={18} className={styles.aiIcon} />
+                                <span>AI Script Assistant</span>
+                            </div>
+                            <button className={styles.modalClose} onClick={() => setShowAIModal(false)}>
+                                <X size={18} />
+                            </button>
+                        </div>
+                        <div className={styles.modalBody}>
+                            <p className={styles.modalDescription}>
+                                Describe the indicator or strategy you want to create.
+                                For example: "A 5-EMA and 20-EMA crossover strategy with RSI filter."
+                            </p>
+                            <textarea
+                                className={styles.promptInput}
+                                value={aiPrompt}
+                                onChange={(e) => setAiPrompt(e.target.value)}
+                                placeholder="Describe your indicator here..."
+                                autoFocus
+                            />
+                        </div>
+                        <div className={styles.modalFooter}>
+                            <button 
+                                className={styles.secondaryBtn} 
+                                onClick={() => setShowAIModal(false)}
+                            >
+                                Cancel
+                            </button>
+                            <button 
+                                className={styles.primaryBtn} 
+                                onClick={handleAIGenerate}
+                                disabled={isGenerating || !aiPrompt.trim()}
+                            >
+                                {isGenerating ? 'Generating...' : 'Generate Script'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

@@ -544,8 +544,8 @@ export class LineToolManager extends PluginBase {
         }
     }
 
-    public enableSessionHighlighting(): void {
-        console.log('[LineToolManager] enableSessionHighlighting called');
+    public enableSessionHighlighting(highlighter?: (time: any) => string): void {
+        console.log('[LineToolManager] enableSessionHighlighting called', highlighter ? 'with custom highlighter' : '');
         // Check if session highlighting is already active
         const existingIndex = this._tools.findIndex(t => t instanceof SessionHighlighting);
 

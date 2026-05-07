@@ -52,37 +52,5 @@
     }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.js", "src/**/*.jsx"],
-  "exclude": [
-    "node_modules",
-    "dist",
-    "src/__tests__",
-    "e2e",
-    "src/plugins",
-    "src/helpers",
-    "src/services/webhookService.ts",
-    "src/services/indicatorDataManager.ts",
-    "src/services/oiDataService.ts",
-    "src/services/annScannerService.ts",
-    "src/services/globalAlertMonitor.ts",
-    "src/services/marketCapService.ts",
-    "src/utils/tickAggregator.ts",
-    "src/utils/ChartTemplateManager.ts",
-    "src/utils/TemplateManager.ts",
-    "src/utils/shared/orderUtils.ts",
-    "src/utils/coordinateHelpers.ts",
-    "src/utils/colorUtils.ts",
-    "src/utils/indicators",
-    "src/components/IndicatorAlert",
-    "src/components/LayoutTemplates",
-    "src/components/Chart/utils",
-    "src/hooks/useChart.ts",
-    "src/hooks/useAlertHandlers.ts",
-    "src/hooks/useToolHandlers.ts",
-    "src/hooks/useCommandPalette.ts",
-    "src/hooks/useGlobalShortcuts.ts",
-    "src/hooks/useIndicatorHandlers.ts",
-    "src/hooks/useOILines.ts",
-    "src/hooks/useOrderFormState.ts",
-    "src/context/AlertContext.tsx"
-  ]
+  "exclude": ["node_modules", "dist", "src/__tests__", "e2e", "**/example/example.ts"]
 }

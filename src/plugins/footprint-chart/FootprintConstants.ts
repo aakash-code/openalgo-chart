@@ -24,22 +24,22 @@ export const FOOTPRINT_PRESETS: Record<string, FootprintPreset> = {
 
 // Preset display names
 export const PRESET_NAMES: Record<FootprintPreset, string> = {
-    [FOOTPRINT_PRESETS.DELTA_PROFILE]: 'Delta Profile',
-    [FOOTPRINT_PRESETS.BID_ASK_PROFILE]: 'Bid-Ask Profile',
-    [FOOTPRINT_PRESETS.VOLUME_PROFILE]: 'Volume Profile',
-    [FOOTPRINT_PRESETS.FOCUS_FOOTPRINT]: 'Focus Footprint',
-    [FOOTPRINT_PRESETS.LOPSIDED_FOOTPRINT]: 'Lopsided Footprint',
-    [FOOTPRINT_PRESETS.CLASSIC]: 'Classic',
+    delta_profile: 'Delta Profile',
+    bid_ask_profile: 'Bid-Ask Profile',
+    volume_profile: 'Volume Profile',
+    focus_footprint: 'Focus Footprint',
+    lopsided_footprint: 'Lopsided Footprint',
+    classic: 'Classic',
 };
 
 // Preset descriptions
 export const PRESET_DESCRIPTIONS: Record<FootprintPreset, string> = {
-    [FOOTPRINT_PRESETS.DELTA_PROFILE]: 'Shows delta (buy-sell) value in each cell with gradient colors',
-    [FOOTPRINT_PRESETS.BID_ASK_PROFILE]: 'Shows stacked buy/sell volume bars side by side',
-    [FOOTPRINT_PRESETS.VOLUME_PROFILE]: 'Shows total volume at each price level',
-    [FOOTPRINT_PRESETS.FOCUS_FOOTPRINT]: 'Highlights high volume levels, dims low activity',
-    [FOOTPRINT_PRESETS.LOPSIDED_FOOTPRINT]: 'Emphasizes imbalance direction with arrows',
-    [FOOTPRINT_PRESETS.CLASSIC]: 'Traditional bid x ask numeric display',
+    delta_profile: 'Shows delta (buy-sell) value in each cell with gradient colors',
+    bid_ask_profile: 'Shows stacked buy/sell volume bars side by side',
+    volume_profile: 'Shows total volume at each price level',
+    focus_footprint: 'Highlights high volume levels, dims low activity',
+    lopsided_footprint: 'Emphasizes imbalance direction with arrows',
+    classic: 'Traditional bid x ask numeric display',
 };
 
 // Color interface

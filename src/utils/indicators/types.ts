@@ -117,6 +117,25 @@ export interface VWAPOptions {
 }
 
 /**
+ * Result of CVD calculation
+ */
+export interface CVDResult {
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  delta: number;
+}
+
+/**
+ * CVD Calculation Options
+ */
+export interface CVDOptions {
+  anchor?: 'session' | 'total';
+}
+
+/**
  * Enhanced volume analysis result
  */
 export interface EnhancedVolumeResult {

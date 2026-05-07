@@ -62,6 +62,42 @@ export const LayoutDropdown: React.FC<LayoutDropdownProps> = ({ position, layout
                 </svg>
             ),
         },
+        {
+            value: '6',
+            label: '6 Charts',
+            icon: (
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28" width="28" height="28">
+                    <path fill="currentColor" d="M3 3h6v10H3V3zm8 0h6v10h-6V3zm8 0h6v10h-6V3zM3 15h6v10H3V15zm8 0h6v10h-6V15zm8 0h6v10h-6V15z"></path>
+                </svg>
+            ),
+        },
+        {
+            value: '8',
+            label: '8 Charts',
+            icon: (
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28" width="28" height="28">
+                    <path fill="currentColor" d="M3 3h4v10H3V3zm6 0h4v10H9V3zm6 0h4v10h-4V3zm6 0h4v10h-4V3zM3 15h4v10H3V15zm6 0h4v10H9V15zm6 0h4v10h-4V15zm6 0h4v10h-4V15z"></path>
+                </svg>
+            ),
+        },
+        {
+            value: '10',
+            label: '10 Charts',
+            icon: (
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28" width="28" height="28">
+                    <path fill="currentColor" d="M3 3h3v10H3V3zm5 0h3v10H8V3zm5 0h3v10h-3V3zm5 0h3v10h-3V3zm5 0h3v10h-3V3zM3 15h3v10H3V15zm5 0h3v10H8V15zm5 0h3v10h-3V15zm5 0h3v10h-3V15zm5 0h3v10h-3V15z"></path>
+                </svg>
+            ),
+        },
+        {
+            value: '2v',
+            label: '2 Vertical',
+            icon: (
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28" width="28" height="28">
+                    <path fill="currentColor" d="M3 3h22v10H3V3zm0 12h22v10H3V15z"></path>
+                </svg>
+            ),
+        },
     ];
 
     return (

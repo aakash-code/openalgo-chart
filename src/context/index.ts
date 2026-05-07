@@ -71,9 +71,17 @@ export {
   WatchlistProvider,
   useWatchlist,
   type WatchlistContextValue,
-  type Watchlist,
-  type WatchlistsState,
-  type WatchlistSymbol,
-  type WatchlistItemData,
   type WatchlistProviderProps,
 } from './WatchlistContext';
+export type {
+  Watchlist,
+  WatchlistsState,
+  WatchlistSymbol,
+  WatchlistItemData,
+} from '../types/watchlist';
+
+// Watchlist Monitor Context
+export {
+  WatchlistMonitorProvider,
+  useWatchlistMonitor,
+} from './WatchlistMonitorContext';

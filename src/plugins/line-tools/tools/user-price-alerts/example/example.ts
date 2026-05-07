@@ -4,7 +4,7 @@ import {
 	AreaSeries,
 	createChart,
 } from 'lightweight-charts';
-import { generateLineData } from '../../../../../sample-data';
+import { generateLineData } from '../../../../../../sample-data';
 import { UserAlertInfo } from '../state';
 import { UserPriceAlerts } from '../user-price-alerts';
 

@@ -25,7 +25,9 @@ const {
     calculateVWAP,
     calculateSMA,
     calculateEMA,
-    calculateATR
+    calculateATR,
+    calculateVolumetricCandlePair,
+    calculateInstitutionalVolumetric
 } = indicators;
 
 interface OHLCData {
@@ -427,6 +429,14 @@ self.onmessage = (event: MessageEvent<WorkerMessage>) => {
 
             case 'atr':
                 result = calculateATR(data, options?.period || 14);
+                break;
+
+            case 'volumetricCandlePair':
+                result = calculateVolumetricCandlePair(data, options);
+                break;
+
+            case 'institutionalVolumetric':
+                result = calculateInstitutionalVolumetric(data, options);
                 break;
 
             default:

@@ -318,16 +318,29 @@ const ANNScanner: React.FC<ANNScannerProps> = ({
     const handleKeyDown = useCallback((e: KeyboardEvent<HTMLDivElement>): void => {
         if (displayResultsWithDelta.length === 0) return;
 
+        let nextIndex = focusedIndex;
+
         if (e.key === 'ArrowDown') {
             e.preventDefault();
-            setFocusedIndex(prev => prev < 0 ? 0 : Math.min(prev + 1, displayResultsWithDelta.length - 1));
+            nextIndex = focusedIndex < 0 ? 0 : Math.min(focusedIndex + 1, displayResultsWithDelta.length - 1);
         } else if (e.key === 'ArrowUp') {
             e.preventDefault();
-            setFocusedIndex(prev => prev < 0 ? 0 : Math.max(prev - 1, 0));
+            nextIndex = focusedIndex < 0 ? 0 : Math.max(focusedIndex - 1, 0);
         } else if (e.key === 'Enter' && focusedIndex >= 0) {
             e.preventDefault();
             const item = displayResultsWithDelta[focusedIndex];
             if (item) onSymbolSelect({ symbol: item.symbol, exchange: item.exchange });
+            return;
+        } else {
+            return;
+        }
+
+        if (nextIndex !== focusedIndex) {
+            setFocusedIndex(nextIndex);
+            const item = displayResultsWithDelta[nextIndex];
+            if (item) {
+                onSymbolSelect({ symbol: item.symbol, exchange: item.exchange });
+            }
         }
     }, [displayResultsWithDelta, focusedIndex, onSymbolSelect]);
 

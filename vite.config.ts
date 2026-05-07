@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import viteCompression from 'vite-plugin-compression';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -7,7 +8,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    viteCompression({ algorithm: 'gzip' })
+  ],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
@@ -21,6 +25,28 @@ export default defineConfig({
       '@constants': path.resolve(__dirname, './src/constants'),
     },
   },
+  // Production build optimizations
+  build: {
+    target: 'esnext',
+    minify: 'esbuild',
+    sourcemap: false,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // Separate heavy vendor libraries into their own chunks
+          'vendor-chart': ['lightweight-charts'],
+          'vendor-monaco': ['@monaco-editor/react'],
+          'vendor-react': ['react', 'react-dom'],
+          'vendor-zustand': ['zustand'],
+        },
+      },
+    },
+    chunkSizeWarningLimit: 500,
+  },
+  // Pre-bundle heavy dependencies for faster dev server startup
+  optimizeDeps: {
+    include: ['lightweight-charts', 'react', 'react-dom', 'zustand'],
+  },
   server: {
     port: 5001,
     proxy: {
@@ -31,6 +57,7 @@ export default defineConfig({
       '/ws': {
         target: 'ws://127.0.0.1:8765',
         ws: true,
+        changeOrigin: true,
       },
       '/npl-time': {
         target: 'https://www.nplindia.in',

@@ -9,6 +9,7 @@ import { UIProvider } from './context/UIContext';
 import { ToolProvider } from './context/ToolContext';
 import { AlertProvider } from './context/AlertContext';
 import { WatchlistProvider } from './context/WatchlistContext';
+import { WatchlistMonitorProvider } from './context/WatchlistMonitorContext';
 
 // Apply theme immediately to prevent flash of default theme
 // This runs synchronously BEFORE React renders anything
@@ -37,7 +38,9 @@ if (rootElement) {
               <ToolProvider>
                 <AlertProvider>
                   <WatchlistProvider>
-                    <App />
+                    <WatchlistMonitorProvider>
+                      <App />
+                    </WatchlistMonitorProvider>
                   </WatchlistProvider>
                 </AlertProvider>
               </ToolProvider>

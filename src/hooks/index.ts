@@ -145,9 +145,6 @@ export {
   type CompareScaleMode,
   type SymbolData,
   type ComparisonSymbol,
-  type WatchlistSymbol,
-  type WatchlistsState,
-  type SearchMode,
   type UseSymbolHandlersParams,
   type UseSymbolHandlersReturn,
 } from './useSymbolHandlers';
@@ -210,10 +207,6 @@ export {
 // Watchlist hooks
 export {
   useWatchlistHandlers,
-  type Watchlist,
-  type WatchlistsState as WatchlistState,
-  type WatchlistDataItem,
-  type ImportSymbol,
   type ShowToastFn,
   type UseWatchlistHandlersParams,
   type UseWatchlistHandlersReturn,

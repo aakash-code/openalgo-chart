@@ -146,6 +146,14 @@ export const INDICATOR_REGISTRY: Record<string, IndicatorMetadata> = {
     description: 'Average True Range'
   },
 
+  cvd: {
+    cleanupType: INDICATOR_CLEANUP_TYPES.SIMPLE_SERIES,
+    pane: 'cvd',
+    hasPane: true,
+    hasPriceLines: false,
+    description: 'Cumulative Volume Delta'
+  },
+
   adx: {
     cleanupType: INDICATOR_CLEANUP_TYPES.MULTI_SERIES,
     pane: 'adx',
@@ -226,6 +234,24 @@ export const INDICATOR_REGISTRY: Record<string, IndicatorMetadata> = {
     arrayRef: 'priceActionRangeSeriesRef',
     hasMarkers: true,
     description: 'Price Action Range Strategy'
+  },
+
+  volumetricCandlePair: {
+    cleanupType: INDICATOR_CLEANUP_TYPES.SERIES_ARRAY,
+    pane: 'main',
+    hasPane: false,
+    arrayRef: 'volumetricCandlePairSeriesRef',
+    hasMarkers: true,
+    description: 'First Volumetric Candle Pair Zone Strategy'
+  },
+
+  institutionalVolumetric: {
+    cleanupType: INDICATOR_CLEANUP_TYPES.SERIES_ARRAY,
+    pane: 'main',
+    hasPane: false,
+    arrayRef: 'institutionalVolumetricSeriesRef',
+    hasMarkers: true,
+    description: 'Institutional Volumetric RVOL Strategy'
   },
 
   // ==================== PINE SCRIPT ====================

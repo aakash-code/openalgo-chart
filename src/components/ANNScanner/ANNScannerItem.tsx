@@ -1,4 +1,4 @@
-import React, { memo } from 'react';
+import React, { memo, useEffect, useRef } from 'react';
 import type { MouseEvent } from 'react';
 import classNames from 'classnames';
 import { TrendingUp, TrendingDown, Minus, Plus, Check } from 'lucide-react';
@@ -58,6 +58,14 @@ const ANNScannerItem: React.FC<ANNScannerItemProps> = memo(({
     onAddToWatchlist,
 }) => {
     const { symbol, direction, streak, nnOutput, error } = item;
+    const itemRef = useRef<HTMLDivElement>(null);
+
+    // Scroll into view when focused
+    useEffect(() => {
+        if (isFocused && itemRef.current) {
+            itemRef.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+    }, [isFocused]);
 
     // Calculate signal strength
     const signalStrength = calculateSignalStrength(nnOutput);
@@ -97,6 +105,7 @@ const ANNScannerItem: React.FC<ANNScannerItemProps> = memo(({
 
     return (
         <div
+            ref={itemRef}
             className={classNames(styles.item, {
                 [styles.focused]: isFocused,
                 [styles.hasError]: error,

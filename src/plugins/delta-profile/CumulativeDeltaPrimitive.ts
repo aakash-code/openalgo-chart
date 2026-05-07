@@ -6,13 +6,17 @@
 import type {
   IChartApi,
   ISeriesApi,
-  ISeriesPrimitivePaneRenderer,
-  ISeriesPrimitivePaneView,
+  IPrimitivePaneRenderer,
+  IPrimitivePaneView,
   SeriesAttachedParameter,
   SeriesOptionsMap,
   Time,
-  BitmapCoordinatesRenderingScope,
 } from 'lightweight-charts';
+
+import {
+  BitmapCoordinatesRenderingScope,
+  CanvasRenderingTarget2D,
+} from 'fancy-canvas';
 
 import {
   COLORS,
@@ -36,14 +40,14 @@ export interface CumulativeDeltaData {
 /**
  * Cumulative Delta Pane Renderer
  */
-class CumulativeDeltaPaneRenderer implements ISeriesPrimitivePaneRenderer {
+class CumulativeDeltaPaneRenderer implements IPrimitivePaneRenderer {
   private _source: CumulativeDeltaPrimitive;
 
   constructor(source: CumulativeDeltaPrimitive) {
     this._source = source;
   }
 
-  draw(target: { useBitmapCoordinateSpace: (cb: (scope: BitmapCoordinatesRenderingScope) => void) => void }): void {
+  draw(target: CanvasRenderingTarget2D): void {
     target.useBitmapCoordinateSpace((scope) => {
       const { context: ctx, bitmapSize, horizontalPixelRatio, verticalPixelRatio } = scope;
       const cdData = this._source._cdData;
@@ -182,7 +186,7 @@ class CumulativeDeltaPaneRenderer implements ISeriesPrimitivePaneRenderer {
 /**
  * Cumulative Delta Pane View
  */
-class CumulativeDeltaPaneView implements ISeriesPrimitivePaneView {
+class CumulativeDeltaPaneView implements IPrimitivePaneView {
   private _source: CumulativeDeltaPrimitive;
 
   constructor(source: CumulativeDeltaPrimitive) {
@@ -191,7 +195,7 @@ class CumulativeDeltaPaneView implements ISeriesPrimitivePaneView {
 
   update(): void {}
 
-  renderer(): ISeriesPrimitivePaneRenderer {
+  renderer(): IPrimitivePaneRenderer {
     return new CumulativeDeltaPaneRenderer(this._source);
   }
 
@@ -234,9 +238,10 @@ export class CumulativeDeltaPrimitive {
     this._requestUpdate = null;
   }
 
-  paneViews(): readonly ISeriesPrimitivePaneView[] {
+  paneViews(): readonly IPrimitivePaneView[] {
     return this._paneViews;
   }
+
 
   updateAllViews(): void {
     this._paneViews.forEach((view) => view.update());

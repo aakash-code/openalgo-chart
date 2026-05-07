@@ -48,13 +48,70 @@
     border-bottom-color: var(--tv-color-brand);
 }
 
-.logCount {
+.logCount, .scannerBadge {
     background-color: var(--tv-color-brand);
     color: white;
     font-size: 10px;
     padding: 2px 6px;
     border-radius: 10px;
     margin-left: 6px;
+}
+
+.scannerHeader {
+    padding: 16px;
+    border-bottom: 1px solid var(--tv-color-border);
+    background: rgba(41, 98, 255, 0.03);
+}
+
+.scannerStatus {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.pulse {
+    width: 10px;
+    height: 10px;
+    background: #00ff00;
+    border-radius: 50%;
+    box-shadow: 0 0 0 rgba(0, 255, 0, 0.4);
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(0, 255, 0, 0.7); }
+    70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(0, 255, 0, 0); }
+    100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(0, 255, 0, 0); }
+}
+
+.scannerDesc {
+    font-size: 12px;
+    color: var(--tv-color-text-secondary);
+    line-height: 1.4;
+    margin: 0;
+}
+
+.symbolGrid {
+    padding: 12px;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
+    gap: 8px;
+}
+
+.scanningSymbol {
+    background-color: var(--tv-color-toolbar-button-background-hover);
+    border: 1px solid var(--tv-color-border);
+    border-radius: 4px;
+    padding: 6px;
+    font-size: 11px;
+    color: var(--tv-color-text-primary);
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .content {

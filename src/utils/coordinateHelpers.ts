@@ -1,4 +1,4 @@
-import type { IChartApi, ISeriesApi, SeriesType } from 'lightweight-charts';
+import type { IChartApi, ISeriesApi, SeriesType, Logical, Time } from 'lightweight-charts';
 
 /**
  * Point with logical time and price
@@ -57,7 +57,7 @@ export function pointToCoordinate(
     if (!point) return { x: null, y: null };
     const timeScale = chart.timeScale();
     return {
-        x: timeScale.logicalToCoordinate(point.logical),
+        x: timeScale.logicalToCoordinate(point.logical as Logical),
         y: series.priceToCoordinate(point.price),
     };
 }
@@ -73,7 +73,7 @@ export function timeToLogical(
     chart: IChartApi
 ): LogicalPoint {
     const timeScale = chart.timeScale();
-    const logical = timeScale.timeToCoordinate(point.time);
+    const logical = timeScale.timeToCoordinate(point.time as Time);
     return { logical: logical as number, price: point.price };
 }
 

@@ -42,6 +42,14 @@ export interface UseIntervalHandlersParams {
   setCustomIntervals: Dispatch<SetStateAction<CustomInterval[]>>;
   currentInterval: string;
   showToast: ShowToastFn;
+  // Sync state
+  isSyncEnabled?: boolean;
+  syncOptions?: {
+    symbol: boolean;
+    interval: boolean;
+    crosshair: boolean;
+    time: boolean;
+  };
 }
 
 /** Hook return type */
@@ -69,14 +77,20 @@ export const useIntervalHandlers = ({
   setCustomIntervals,
   currentInterval,
   showToast,
+  isSyncEnabled = false,
+  syncOptions = { symbol: false, interval: false, crosshair: false, time: false },
 }: UseIntervalHandlersParams): UseIntervalHandlersReturn => {
   // Handle interval change - track non-favorite selections
   const handleIntervalChange = useCallback(
     (newInterval: string) => {
       setCharts((prev) =>
-        prev.map((chart) =>
-          chart.id === activeChartId ? { ...chart, interval: newInterval } : chart
-        )
+        prev.map((chart) => {
+          const shouldUpdate = 
+              chart.id === activeChartId || 
+              (isSyncEnabled && syncOptions.interval);
+
+          return shouldUpdate ? { ...chart, interval: newInterval } : chart;
+        })
       );
 
       // If the new interval is not a favorite, save it as the last non-favorite
@@ -84,7 +98,7 @@ export const useIntervalHandlers = ({
         setLastNonFavoriteInterval(newInterval);
       }
     },
-    [setCharts, activeChartId, favoriteIntervals, setLastNonFavoriteInterval]
+    [setCharts, activeChartId, favoriteIntervals, setLastNonFavoriteInterval, isSyncEnabled, syncOptions.interval]
   );
 
   // Toggle favorite status for an interval

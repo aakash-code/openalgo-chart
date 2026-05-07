@@ -87,8 +87,11 @@ export class UserAlertsState {
 	}
 
 	destroy() {
-		// TODO: add more destroying 💥
-		this._alertsChanged.unsubscribeAll(this);
+		this._alertsChanged.destroy();
+		this._alertAdded.destroy();
+		this._alertRemoved.destroy();
+		this._alertChanged.destroy();
+		this._alerts.clear();
 	}
 
 	alertAdded(): Delegate<UserAlertInfo> {

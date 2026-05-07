@@ -7,7 +7,8 @@ import {
     LineSeries,
     AreaSeries,
     BaselineSeries,
-    HistogramSeries
+    HistogramSeries,
+    CandlestickSeries
 } from 'lightweight-charts';
 import { CHART_COLORS } from '../../../utils/colorUtils';
 
@@ -537,6 +538,32 @@ export const createPineSeries = (chart: any, ind: IndicatorConfig, isVisible: bo
 };
 
 /**
+ * Create CVD series in separate pane (candlestick)
+ */
+export const createCVDSeries = (chart: any): { series: any; pane: any } => {
+    const pane = chart.addPane({ height: 120 });
+    const series = pane.addSeries(CandlestickSeries, {
+        upColor: '#089981',
+        downColor: '#F23645',
+        borderVisible: false,
+        wickVisible: true,
+        title: 'CVD'
+    });
+
+    // Add Neutral Line at 0
+    series.createPriceLine({
+        price: 0,
+        color: 'rgba(128, 128, 128, 0.5)',
+        lineWidth: 1,
+        lineStyle: 2, // Dashed
+        axisLabelVisible: true,
+        title: 'Neutral',
+    });
+
+    return { series, pane };
+};
+
+/**
  * Main factory function - creates series for any indicator type
  */
 export const createIndicatorSeries = (chart: any, ind: IndicatorConfig, isVisible: boolean = true): SeriesResult | null => {
@@ -598,9 +625,27 @@ export const createIndicatorSeries = (chart: any, ind: IndicatorConfig, isVisibl
         case 'pivotPoints':
             return { series: createPivotPointsSeries(chart, ind) };
 
+        case 'cvd': {
+            const result = createCVDSeries(chart);
+            return { series: result.series, pane: result.pane };
+        }
+
         case 'pine': {
             const result = createPineSeries(chart, ind, isVisible);
             return { series: result.series, pane: result.pane };
+        }
+
+        case 'patternRecognition': {
+            // Pattern recognition is marker-based on main series.
+            // We create a dummy hidden line series to anchor it in the indicator map
+            const series = chart.addSeries(LineSeries, {
+                visible: false,
+                priceLineVisible: false,
+                lastValueVisible: false,
+                crosshairMarkerVisible: false,
+                autoscaleInfoProvider: () => null
+            });
+            return { series };
         }
 
         default:

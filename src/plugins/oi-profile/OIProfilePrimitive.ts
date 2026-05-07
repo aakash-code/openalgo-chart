@@ -12,13 +12,17 @@
 import type {
   IChartApi,
   ISeriesApi,
-  ISeriesPrimitivePaneRenderer,
-  ISeriesPrimitivePaneView,
+  IPrimitivePaneRenderer,
+  IPrimitivePaneView,
   SeriesAttachedParameter,
   SeriesOptionsMap,
   Time,
-  BitmapCoordinatesRenderingScope,
 } from 'lightweight-charts';
+
+import {
+  BitmapCoordinatesRenderingScope,
+  CanvasRenderingTarget2D,
+} from 'fancy-canvas';
 
 import {
   DEFAULT_OI_PROFILE_OPTIONS,
@@ -70,14 +74,14 @@ type SeriesType = keyof SeriesOptionsMap;
 /**
  * OI Pane Renderer - handles actual Canvas2D drawing
  */
-class OIPaneRenderer implements ISeriesPrimitivePaneRenderer {
+class OIPaneRenderer implements IPrimitivePaneRenderer {
   private _source: OIProfilePrimitive;
 
   constructor(source: OIProfilePrimitive) {
     this._source = source;
   }
 
-  draw(target: { useBitmapCoordinateSpace: (callback: (scope: BitmapCoordinatesRenderingScope) => void) => void }): void {
+  draw(target: CanvasRenderingTarget2D): void {
     target.useBitmapCoordinateSpace((scope: BitmapCoordinatesRenderingScope) => {
       const { context: ctx, bitmapSize, horizontalPixelRatio, verticalPixelRatio } = scope;
       const oiData = this._source._oiData;
@@ -417,7 +421,7 @@ class OIPaneRenderer implements ISeriesPrimitivePaneRenderer {
 /**
  * OI Pane View - creates renderer for drawing
  */
-class OIPaneView implements ISeriesPrimitivePaneView {
+class OIPaneView implements IPrimitivePaneView {
   private _source: OIProfilePrimitive;
 
   constructor(source: OIProfilePrimitive) {
@@ -428,7 +432,7 @@ class OIPaneView implements ISeriesPrimitivePaneView {
     // Called when chart needs to update
   }
 
-  renderer(): ISeriesPrimitivePaneRenderer {
+  renderer(): IPrimitivePaneRenderer {
     return new OIPaneRenderer(this._source);
   }
 
@@ -479,7 +483,7 @@ export class OIProfilePrimitive {
   /**
    * Returns pane views for rendering
    */
-  paneViews(): readonly ISeriesPrimitivePaneView[] {
+  paneViews(): readonly IPrimitivePaneView[] {
     return this._paneViews;
   }
 

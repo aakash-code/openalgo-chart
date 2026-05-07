@@ -39,9 +39,71 @@ export interface FootprintLevel {
 /** Tick listener callback */
 type TickListener = (tick: Tick) => void;
 
+/**
+ * O(1) Circular Buffer for tick storage
+ * Uses head pointer arithmetic instead of Array.shift() (which is O(n))
+ */
+class CircularBuffer<T> {
+  private buffer: (T | undefined)[];
+  private head = 0;
+  private _size = 0;
+  private capacity: number;
+
+  constructor(capacity: number) {
+    this.capacity = capacity;
+    this.buffer = new Array(capacity);
+  }
+
+  push(item: T): void {
+    const idx = (this.head + this._size) % this.capacity;
+    this.buffer[idx] = item;
+    if (this._size < this.capacity) {
+      this._size++;
+    } else {
+      // Buffer is full — overwrite oldest and advance head
+      this.head = (this.head + 1) % this.capacity;
+    }
+  }
+
+  /** Convert to ordered array (oldest first) */
+  toArray(): T[] {
+    const result: T[] = new Array(this._size);
+    for (let i = 0; i < this._size; i++) {
+      result[i] = this.buffer[(this.head + i) % this.capacity]!;
+    }
+    return result;
+  }
+
+  /** Filter items matching a predicate (returns new array) */
+  filter(predicate: (item: T) => boolean): T[] {
+    const result: T[] = [];
+    for (let i = 0; i < this._size; i++) {
+      const item = this.buffer[(this.head + i) % this.capacity]!;
+      if (predicate(item)) {
+        result.push(item);
+      }
+    }
+    return result;
+  }
+
+  get length(): number { return this._size; }
+
+  /** Iterate over all items in order (oldest first) without allocating */
+  forEach(callback: (item: T, index: number) => void): void {
+    for (let i = 0; i < this._size; i++) {
+      callback(this.buffer[(this.head + i) % this.capacity]!, i);
+    }
+  }
+
+  clear(): void {
+    this.head = 0;
+    this._size = 0;
+  }
+}
+
 /** Symbol tick store */
 interface SymbolTickStore {
-  ticks: Tick[];
+  ticks: CircularBuffer<Tick>;
   footprints: Map<number, FootprintLevel>;
   listeners: Set<TickListener>;
 }
@@ -91,7 +153,7 @@ const initTickStore = (symbol: string, exchange: string): SymbolTickStore => {
   const key = `${symbol}:${exchange}`;
   if (!tickStore.has(key)) {
     tickStore.set(key, {
-      ticks: [],
+      ticks: new CircularBuffer<Tick>(MAX_TICKS_IN_MEMORY),
       footprints: new Map(),
       listeners: new Set(),
     });
@@ -100,16 +162,13 @@ const initTickStore = (symbol: string, exchange: string): SymbolTickStore => {
 };
 
 /**
- * Add a tick to the store (circular buffer)
+ * Add a tick to the store (O(1) circular buffer - no Array.shift())
  */
 const addTick = (symbol: string, exchange: string, tick: Tick): void => {
   const store = initTickStore(symbol, exchange);
 
-  // Add to circular buffer
+  // O(1) push into circular buffer (automatically evicts oldest when full)
   store.ticks.push(tick);
-  if (store.ticks.length > MAX_TICKS_IN_MEMORY) {
-    store.ticks.shift();
-  }
 
   // Notify listeners
   store.listeners.forEach((listener) => {
@@ -148,7 +207,7 @@ export const getTicksInRange = (
 export const getAllTicks = (symbol: string, exchange: string): Tick[] => {
   const key = `${symbol}:${exchange}`;
   const store = tickStore.get(key);
-  return store ? [...store.ticks] : [];
+  return store ? store.ticks.toArray() : [];
 };
 
 /**

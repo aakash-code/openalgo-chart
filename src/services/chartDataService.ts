@@ -6,6 +6,7 @@
 import logger from '../utils/logger';
 import { getApiBase, getLoginUrl, getApiKey, convertInterval } from './api/config';
 import { safeParseJSON } from './storageService';
+import { loadCandlesFromCache, saveCandlesToCache } from './db/chartCache';
 
 /** Candle/OHLC data structure */
 export interface Candle {
@@ -158,27 +159,37 @@ export const getKlines = async (
   signal?: AbortSignal
 ): Promise<Candle[]> => {
   try {
-    // Calculate date range (last 2 years for daily, adjust for intraday)
+    // 1. Try to load from local cache first
+    const cachedCandles = await loadCandlesFromCache(symbol, exchange, interval);
+    
+    // 2. Determine if we need to fetch more data
+    // If we have cached candles, we only need to fetch from the last cached candle's date to now
+    let startDate = new Date();
     const endDate = new Date();
-    const startDate = new Date();
 
-    // Adjust start date based on interval to ensure enough candles (target: 235+)
-    // Indian markets have ~6 trading hours/day (9:15 AM - 3:30 PM)
-    if (interval.includes('h')) {
-      // Hourly intervals need more days to get 235 candles
-      startDate.setDate(startDate.getDate() - 180);
-    } else if (interval.includes('m')) {
-      // Minute intervals: scale days based on granularity
-      const minutes = parseInt(interval);
-      if (!isNaN(minutes) && minutes < 15) {
-        startDate.setDate(startDate.getDate() - 15);
-      } else {
-        startDate.setDate(startDate.getDate() - 90);
-      }
-    } else if (/^(W|1w|M|1M)$/i.test(interval)) {
-      startDate.setFullYear(startDate.getFullYear() - 10); // 10 years for weekly/monthly
+    if (cachedCandles.length > 0) {
+        // Fetch from 1 day before the last candle to handle potential gaps or incomplete daily candles
+        const lastCandleTime = cachedCandles[cachedCandles.length - 1].time;
+        startDate = new Date((lastCandleTime - IST_OFFSET_SECONDS) * 1000);
+        startDate.setDate(startDate.getDate() - 1);
+        
+        logger.debug('[Cache] Found', cachedCandles.length, 'candles. Fetching updates since:', startDate.toISOString());
     } else {
-      startDate.setFullYear(startDate.getFullYear() - 2); // 2 years for daily
+        // No cache: Scale days based on interval granularity
+        if (interval.includes('h')) {
+            startDate.setDate(startDate.getDate() - 180);
+        } else if (interval.includes('m')) {
+            const minutes = parseInt(interval);
+            if (!isNaN(minutes) && minutes < 15) {
+                startDate.setDate(startDate.getDate() - 15);
+            } else {
+                startDate.setDate(startDate.getDate() - 90);
+            }
+        } else if (/^(W|1w|M|1M)$/i.test(interval)) {
+            startDate.setFullYear(startDate.getFullYear() - 10);
+        } else {
+            startDate.setFullYear(startDate.getFullYear() - 2);
+        }
     }
 
     const formatDate = (d: Date): string => d.toISOString().split('T')[0] as string;
@@ -200,28 +211,19 @@ export const getKlines = async (
       }),
     });
 
-    logger.debug('[OpenAlgo] History request:', {
-      symbol,
-      exchange,
-      interval: convertInterval(interval),
-      start_date: formatDate(startDate),
-      end_date: formatDate(endDate),
-    });
-
     if (!response.ok) {
       if (response.status === 401) {
         window.location.href = getLoginUrl();
-        return [];
+        return cachedCandles as Candle[];
       }
       throw new Error(`OpenAlgo history error: ${response.status} ${response.statusText}`);
     }
 
     const data = (await response.json()) as HistoryApiResponse;
-    logger.debug('[OpenAlgo] History response:', data);
 
-    // Transform OpenAlgo response to lightweight-charts format
+    // 3. Transform API response
     if (data && data.data && Array.isArray(data.data)) {
-      const candles: Candle[] = data.data
+      const apiCandles: Candle[] = data.data
         .map((d) => {
           let time: number;
           if (typeof d.timestamp === 'number') {
@@ -250,27 +252,28 @@ export const getKlines = async (
             )
         );
 
-      // Sort by time ascending and remove duplicates
-      // Use forward loop with push (O(1)) instead of backward loop with unshift (O(n))
-      candles.sort((a, b) => a.time - b.time);
-      const deduped: Candle[] = [];
-      const seenTimes = new Set<number>();
-      for (let i = 0; i < candles.length; i++) {
-        const candle = candles[i];
-        if (candle && !seenTimes.has(candle.time)) {
-          seenTimes.add(candle.time);
-          deduped.push(candle);
-        }
+      // 4. Merge API candles with Cache
+      const candleMap = new Map();
+      cachedCandles.forEach((c: any) => candleMap.set(c.time, c));
+      apiCandles.forEach((c: any) => candleMap.set(c.time, c));
+
+      const merged = Array.from(candleMap.values()).sort((a, b) => a.time - b.time);
+
+      // 5. Update local cache asynchronously
+      if (apiCandles.length > 0) {
+          saveCandlesToCache(symbol, exchange, interval, merged);
       }
-      return deduped;
+
+      return merged;
     }
 
-    return [];
+    return cachedCandles as Candle[];
   } catch (error) {
     if ((error as Error).name !== 'AbortError') {
       logger.error('[ChartData] Error fetching klines:', error);
     }
-    return [];
+    // Return cached data even on fetch failure (Offline support)
+    return loadCandlesFromCache(symbol, exchange, interval) as Promise<Candle[]>;
   }
 };
 

@@ -177,10 +177,18 @@ export const calculateBuyVWAP = (
 
   for (let i = 0; i < data.length; i++) {
     const candle = data[i];
-    // Use buyVolume if available, otherwise estimate from candle color
-    const buyVolume = candle.buyVolume !== undefined
-      ? candle.buyVolume
-      : (candle.close >= candle.open ? (candle.volume || 0) : (candle.volume || 0) * 0.4);
+    // PRO Wick-Based Volume Partitioning
+    let buyVolume = 0;
+    if (candle.buyVolume !== undefined) {
+      buyVolume = candle.buyVolume;
+    } else {
+      const range = candle.high - candle.low;
+      if (range > 0) {
+        buyVolume = (candle.volume || 0) * (candle.close - candle.low) / range;
+      } else {
+        buyVolume = (candle.volume || 0) * 0.5;
+      }
+    }
 
     if (!buyVolume || buyVolume === 0) {
       const lastValue = bvwapData.length > 0 ? bvwapData[bvwapData.length - 1].value : null;
@@ -237,10 +245,18 @@ export const calculateSellVWAP = (
 
   for (let i = 0; i < data.length; i++) {
     const candle = data[i];
-    // Use sellVolume if available, otherwise estimate from candle color
-    const sellVolume = candle.sellVolume !== undefined
-      ? candle.sellVolume
-      : (candle.close < candle.open ? (candle.volume || 0) : (candle.volume || 0) * 0.4);
+    // PRO Wick-Based Volume Partitioning
+    let sellVolume = 0;
+    if (candle.sellVolume !== undefined) {
+      sellVolume = candle.sellVolume;
+    } else {
+      const range = candle.high - candle.low;
+      if (range > 0) {
+        sellVolume = (candle.volume || 0) * (candle.high - candle.close) / range;
+      } else {
+        sellVolume = (candle.volume || 0) * 0.5;
+      }
+    }
 
     if (!sellVolume || sellVolume === 0) {
       const lastValue = svwapData.length > 0 ? svwapData[svwapData.length - 1].value : null;

@@ -1,5 +1,5 @@
 import { CandlestickSeries, ColorType, createChart } from 'lightweight-charts';
-import { generateCandleData } from '../../../sample-data';
+import { generateCandleData } from '../../../../sample-data';
 import { LineToolManager } from '../line-tool-manager';
 import { PriceScaleTimer } from '../tools/price-scale-timer';
 

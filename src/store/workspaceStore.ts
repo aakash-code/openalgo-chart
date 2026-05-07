@@ -16,6 +16,14 @@ interface WorkspaceState {
   activeChartId: number;
   charts: ChartConfig[];
   chartRefs: Record<number, IChartApi | null>;
+  // Sync state
+  isSyncEnabled: boolean;
+  syncOptions: {
+    symbol: boolean;
+    interval: boolean;
+    crosshair: boolean;
+    time: boolean;
+  };
 }
 
 /** Workspace actions */
@@ -36,6 +44,9 @@ interface WorkspaceActions {
   setChartRef: (id: number, ref: IChartApi | null) => void;
   getChartRef: (id: number) => IChartApi | null | undefined;
   setFromCloud: (cloudLayoutData: unknown) => void;
+  // Sync actions
+  setIsSyncEnabled: (enabled: boolean) => void;
+  setSyncOptions: (options: Partial<WorkspaceState['syncOptions']>) => void;
 }
 
 /** Combined store type */
@@ -118,6 +129,13 @@ function loadInitialState(): WorkspaceState {
               } as ChartConfig,
             ],
       chartRefs: {},
+      isSyncEnabled: false,
+      syncOptions: {
+        symbol: true,
+        interval: true,
+        crosshair: true,
+        time: true,
+      },
     };
   }
 
@@ -134,6 +152,13 @@ function loadInitialState(): WorkspaceState {
       } as ChartConfig,
     ],
     chartRefs: {},
+    isSyncEnabled: false,
+    syncOptions: {
+      symbol: true,
+      interval: true,
+      crosshair: true,
+      time: true,
+    },
   };
 }
 
@@ -287,6 +312,13 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
               charts: migratedCharts,
             };
           }),
+
+        setIsSyncEnabled: (enabled) => set({ isSyncEnabled: enabled }),
+
+        setSyncOptions: (options) =>
+          set((state) => ({
+            syncOptions: { ...state.syncOptions, ...options },
+          })),
       }),
       {
         name: 'openalgo-workspace-storage',
@@ -310,6 +342,8 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
           charts: state.charts,
           layout: state.layout,
           activeChartId: state.activeChartId,
+          isSyncEnabled: state.isSyncEnabled,
+          syncOptions: state.syncOptions,
         }),
       }
     )

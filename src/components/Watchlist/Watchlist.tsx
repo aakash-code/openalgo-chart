@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useCallback, useRef } from 'react';
 import type { KeyboardEvent, DragEvent, MouseEvent } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, Search, X } from 'lucide-react';
 import styles from './Watchlist.module.css';
 import classNames from 'classnames';
 import WatchlistSelector from './WatchlistSelector';
@@ -16,29 +16,16 @@ import { useColumnResize, DEFAULT_COLUMN_WIDTHS, MIN_COLUMN_WIDTH } from './hook
 // Import constants
 import { SYMBOL_FULL_NAMES, isMarketOpenNow } from './constants/watchlistConstants';
 
-interface WatchlistItemData {
-    symbol: string;
-    exchange: string;
-    last: string | number;
-    chg: string | number;
-    chgP: string | number;
-    up: boolean;
-    globalIndex?: number;
-}
-
-type WatchlistItem_or_Section = WatchlistItemData | string;
+import type {
+    WatchlistSymbol,
+    Watchlist as WatchlistData,
+    WatchlistItemData,
+    WatchlistItem as WatchlistItem_or_Section
+} from '../../types/watchlist';
 
 interface SymbolData {
     symbol: string;
     exchange: string;
-}
-
-interface WatchlistData {
-    id: string;
-    name: string;
-    symbols?: WatchlistItem_or_Section[];
-    isFavorite?: boolean;
-    favoriteEmoji?: string;
 }
 
 interface SortConfig {
@@ -91,6 +78,8 @@ export interface WatchlistProps {
     // Favorites props
     favoriteWatchlists?: WatchlistData[];
     onToggleFavorite?: (id: string, emoji: string | null) => void;
+    // Flagging
+    onSetFlag?: (symbol: string, exchange: string, flag: string | null) => void;
 }
 
 const SkeletonRow: React.FC = () => (
@@ -134,13 +123,17 @@ const Watchlist: React.FC<WatchlistProps> = ({
     // Favorites props
     favoriteWatchlists = [],
     onToggleFavorite,
+    onSetFlag,
 }) => {
     const hasMultipleWatchlists = watchlists.length > 0 && onSwitchWatchlist;
     const [sortConfig, setSortConfig] = useState<SortConfig>({ key: null, direction: 'asc' });
+    const [searchQuery, setSearchQuery] = useState('');
+    const [isSearchVisible, setIsSearchVisible] = useState(false);
     const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
     const [draggedSection, setDraggedSection] = useState<string | null>(null);
     const [focusedIndex, setFocusedIndex] = useState(-1);
     const listRef = useRef<HTMLDivElement>(null);
+    const searchInputRef = useRef<HTMLInputElement>(null);
 
     // Use extracted column resize hook
     const { columnWidths, resizing, handleResizeStart } = useColumnResize();
@@ -155,6 +148,24 @@ const Watchlist: React.FC<WatchlistProps> = ({
         item: null,
         index: null,
     });
+
+    const toggleSearch = useCallback(() => {
+        setIsSearchVisible(prev => {
+            const next = !prev;
+            if (next) {
+                setTimeout(() => searchInputRef.current?.focus(), 0);
+            } else {
+                setSearchQuery('');
+            }
+            return next;
+        });
+    }, []);
+
+    const handleSetFlagFromMenu = useCallback((flag: string | null) => {
+        if (onSetFlag && contextMenu.item) {
+            onSetFlag(contextMenu.item.symbol, contextMenu.item.exchange, flag);
+        }
+    }, [onSetFlag, contextMenu.item]);
 
     const handleSort = useCallback((key: string): void => {
         let direction: 'asc' | 'desc' = 'asc';
@@ -329,7 +340,35 @@ const Watchlist: React.FC<WatchlistProps> = ({
     }, [contextMenu.item, onRemoveClick]);
 
     const sortedItems = useMemo((): WatchlistItem_or_Section[] => {
-        if (!sortConfig.key) return items;
+        // First filter by search query if applicable
+        let filtered = items;
+        if (searchQuery) {
+            const query = searchQuery.toLowerCase();
+            filtered = items.filter(item => {
+                if (typeof item === 'string') return true; // Keep section headers for now
+                return item.symbol.toLowerCase().includes(query) ||
+                       (SYMBOL_FULL_NAMES[item.symbol as keyof typeof SYMBOL_FULL_NAMES] || '').toLowerCase().includes(query);
+            });
+
+            // Remove empty sections if searching
+            const result: WatchlistItem_or_Section[] = [];
+            for (let i = 0; i < filtered.length; i++) {
+                const item = filtered[i];
+                if (typeof item === 'string' && item.startsWith('###')) {
+                    // Peek ahead to see if there are any symbols before next section
+                    const nextSectionIdx = filtered.findIndex((next, idx) => idx > i && typeof next === 'string' && next.startsWith('###'));
+                    const symbolsInSection = filtered.slice(i + 1, nextSectionIdx === -1 ? filtered.length : nextSectionIdx);
+                    if (symbolsInSection.length > 0) {
+                        result.push(item);
+                    }
+                } else {
+                    result.push(item);
+                }
+            }
+            filtered = result;
+        }
+
+        if (!sortConfig.key) return filtered;
 
         const result: WatchlistItem_or_Section[] = [];
         let currentGroup: WatchlistItemData[] = [];
@@ -351,7 +390,7 @@ const Watchlist: React.FC<WatchlistProps> = ({
             });
         }
 
-        for (const item of items) {
+        for (const item of filtered) {
             if (typeof item === 'string' && item.startsWith('###')) {
                 if (currentGroup.length > 0) {
                     result.push(...sortGroup(currentGroup));
@@ -367,13 +406,14 @@ const Watchlist: React.FC<WatchlistProps> = ({
         }
 
         return result;
-    }, [items, sortConfig]);
+    }, [items, sortConfig, searchQuery]);
 
     // Group items by section
     const groupedItems = useMemo((): GroupedItems[] => {
         const groups: GroupedItems[] = [];
         let currentSection: string | null = null;
         let currentItems: WatchlistItemData[] = [];
+        let stockIdxCounter = 0;
 
         for (let i = 0; i < sortedItems.length; i++) {
             const item = sortedItems[i];
@@ -389,7 +429,12 @@ const Watchlist: React.FC<WatchlistProps> = ({
                 currentSection = item.replace('###', '');
                 currentItems = [];
             } else {
-                currentItems.push({ ...(item as WatchlistItemData), globalIndex: i });
+                const stockItem = item as WatchlistItemData;
+                currentItems.push({
+                    ...stockItem,
+                    globalIndex: i,
+                    stockIndex: stockIdxCounter++
+                } as any);
             }
         }
 
@@ -421,21 +466,28 @@ const Watchlist: React.FC<WatchlistProps> = ({
     const handleKeyDown = useCallback((e: KeyboardEvent<HTMLDivElement>): void => {
         if (stockItems.length === 0) return;
 
+        let nextIndex = focusedIndex;
+
         if (e.key === 'ArrowDown') {
             e.preventDefault();
-            setFocusedIndex(prev => {
-                const newIndex = prev < 0 ? 0 : Math.min(prev + 1, stockItems.length - 1);
-                return newIndex;
-            });
+            nextIndex = focusedIndex < 0 ? 0 : Math.min(focusedIndex + 1, stockItems.length - 1);
         } else if (e.key === 'ArrowUp') {
             e.preventDefault();
-            setFocusedIndex(prev => {
-                const newIndex = prev < 0 ? 0 : Math.max(prev - 1, 0);
-                return newIndex;
-            });
+            nextIndex = focusedIndex < 0 ? 0 : Math.max(focusedIndex - 1, 0);
         } else if (e.key === 'Enter' && focusedIndex >= 0 && focusedIndex < stockItems.length) {
             e.preventDefault();
             const item = stockItems[focusedIndex];
+            if (item && item.symbol) {
+                onSymbolSelect({ symbol: item.symbol, exchange: item.exchange || 'NSE' });
+            }
+            return;
+        } else {
+            return;
+        }
+
+        if (nextIndex !== focusedIndex) {
+            setFocusedIndex(nextIndex);
+            const item = stockItems[nextIndex];
             if (item && item.symbol) {
                 onSymbolSelect({ symbol: item.symbol, exchange: item.exchange || 'NSE' });
             }
@@ -483,9 +535,29 @@ const Watchlist: React.FC<WatchlistProps> = ({
                 )}
 
                 <div className={styles.actions}>
+                    <span title="Search symbols"><Search size={16} className={classNames(styles.icon, { [styles.activeIcon]: isSearchVisible })} onClick={toggleSearch} /></span>
                     <span title="Add symbol"><Plus size={16} className={styles.icon} onClick={onAddClick} /></span>
                 </div>
             </div>
+
+            {isSearchVisible && (
+                <div className={styles.searchBar}>
+                    <div className={styles.searchInputWrapper}>
+                        <Search size={14} className={styles.searchIcon} />
+                        <input
+                            ref={searchInputRef}
+                            type="text"
+                            placeholder="Search within watchlist..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className={styles.searchInput}
+                        />
+                        {searchQuery && (
+                            <X size={14} className={styles.clearSearch} onClick={() => setSearchQuery('')} />
+                        )}
+                    </div>
+                </div>
+            )}
 
             {/* Quick-access favorites bar */}
             {favoriteWatchlists.length > 0 && (
@@ -584,12 +656,8 @@ const Watchlist: React.FC<WatchlistProps> = ({
                                         onDrop={handleSectionDrop}
                                     >
                                         {group.items.map((item) => {
-                                            const globalIndex = sortedItems.findIndex(
-                                                i => typeof i !== 'string' && i.symbol === item.symbol && i.exchange === item.exchange
-                                            );
-                                            const stockIndex = stockItems.findIndex(
-                                                i => i.symbol === item.symbol && i.exchange === item.exchange
-                                            );
+                                            const globalIndex = item.globalIndex ?? 0;
+                                            const stockIndex = (item as any).stockIndex ?? 0;
                                             return (
                                                 <WatchlistItem
                                                     key={`${item.symbol}-${item.exchange}`}
@@ -617,12 +685,8 @@ const Watchlist: React.FC<WatchlistProps> = ({
                                     </WatchlistSection>
                                 )}
                                 {!group.section && group.items.map((item) => {
-                                    const globalIndex = sortedItems.findIndex(
-                                        i => typeof i !== 'string' && i.symbol === item.symbol && i.exchange === item.exchange
-                                    );
-                                    const stockIndex = stockItems.findIndex(
-                                        i => i.symbol === item.symbol && i.exchange === item.exchange
-                                    );
+                                    const globalIndex = item.globalIndex ?? 0;
+                                    const stockIndex = (item as any).stockIndex ?? 0;
                                     return (
                                         <WatchlistItem
                                             key={`${item.symbol}-${item.exchange}`}
@@ -669,6 +733,7 @@ const Watchlist: React.FC<WatchlistProps> = ({
                 onMoveToTop={handleMoveToTop}
                 onMoveToBottom={handleMoveToBottom}
                 onRemove={handleRemoveFromMenu}
+                onSetFlag={handleSetFlagFromMenu}
             />
         </div>
     );

@@ -16,45 +16,15 @@ import {
 } from 'react';
 import { getJSON, setJSON, STORAGE_KEYS } from '../services/storageService';
 import logger from '../utils/logger';
+import type {
+  WatchlistSymbol,
+  Watchlist,
+  WatchlistsState,
+  WatchlistItemData,
+  WatchlistItem,
+} from '../types/watchlist';
 
 // ==================== TYPES ====================
-
-/** Symbol in watchlist */
-export interface WatchlistSymbol {
-  symbol: string;
-  exchange: string;
-}
-
-/** Watchlist data */
-export interface Watchlist {
-  id: string;
-  name: string;
-  symbols: (WatchlistSymbol | string)[];
-  isFavorite: boolean;
-  favoriteEmoji?: string;
-  collapsedSections: string[];
-}
-
-/** Watchlist state */
-export interface WatchlistsState {
-  lists: Watchlist[];
-  activeListId: string;
-}
-
-/** Real-time watchlist item data */
-export interface WatchlistItemData {
-  symbol: string;
-  exchange?: string;
-  ltp?: number;
-  change?: number;
-  changePercent?: number;
-  volume?: number;
-  high?: number;
-  low?: number;
-  open?: number;
-  close?: number;
-  [key: string]: unknown;
-}
 
 /** Watchlist context value */
 export interface WatchlistContextValue {
@@ -68,7 +38,7 @@ export interface WatchlistContextValue {
 
   // Derived
   activeWatchlist: Watchlist;
-  watchlistSymbols: (WatchlistSymbol | string)[];
+  watchlistSymbols: WatchlistItem[];
   favoriteWatchlists: Watchlist[];
   watchlistSymbolsKey: string;
 
@@ -84,7 +54,8 @@ export interface WatchlistContextValue {
   // Symbol handlers
   addSymbol: (symbol: string, exchange?: string) => void;
   removeSymbol: (symbol: string, exchange?: string | null) => void;
-  reorderSymbols: (newItems: (WatchlistSymbol | string)[]) => void;
+  reorderSymbols: (newItems: WatchlistItem[]) => void;
+  setSymbolFlag: (symbol: string, exchange: string, flag: string | null) => void;
 
   // Section handlers
   addSection: (sectionTitle: string, index: number) => void;
@@ -354,7 +325,7 @@ export function WatchlistProvider({ children }: WatchlistProviderProps) {
   }, []);
 
   // Reorder symbols in watchlist
-  const reorderSymbols = useCallback((newItems: (WatchlistSymbol | string)[]): void => {
+  const reorderSymbols = useCallback((newItems: WatchlistItem[]): void => {
     setWatchlistsState((prev) => ({
       ...prev,
       lists: prev.lists.map((wl) =>
@@ -375,6 +346,35 @@ export function WatchlistProvider({ children }: WatchlistProviderProps) {
         })
         .filter((item): item is WatchlistItemData => item !== undefined);
     });
+  }, []);
+
+  // Set symbol flag
+  const setSymbolFlag = useCallback((symbol: string, exchange: string, flag: string | null): void => {
+    setWatchlistsState((prev) => ({
+      ...prev,
+      lists: prev.lists.map((wl) =>
+        wl.id === prev.activeListId
+          ? {
+              ...wl,
+              symbols: wl.symbols.map((s) => {
+                if (typeof s !== 'string' && s.symbol === symbol && s.exchange === exchange) {
+                  return { ...s, flag: flag || undefined };
+                }
+                return s;
+              }),
+            }
+          : wl
+      ),
+    }));
+
+    // Update real-time data too if present
+    setWatchlistData((prev) =>
+      prev.map((item) =>
+        item.symbol === symbol && item.exchange === exchange
+          ? { ...item, flag: flag || undefined }
+          : item
+      )
+    );
   }, []);
 
   // ============ SECTION HANDLERS ============
@@ -569,6 +569,7 @@ export function WatchlistProvider({ children }: WatchlistProviderProps) {
       addSymbol,
       removeSymbol,
       reorderSymbols,
+      setSymbolFlag,
 
       // Section handlers
       addSection,
@@ -598,6 +599,7 @@ export function WatchlistProvider({ children }: WatchlistProviderProps) {
       addSymbol,
       removeSymbol,
       reorderSymbols,
+      setSymbolFlag,
       addSection,
       toggleSection,
       renameSection,

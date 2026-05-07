@@ -35,6 +35,11 @@
     grid-template-rows: 1fr;
 }
 
+.grid2v {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr 1fr;
+}
+
 .grid3 {
     grid-template-columns: 1fr 1fr 1fr;
     grid-template-rows: 1fr;
@@ -42,5 +47,20 @@
 
 .grid4 {
     grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+}
+
+.grid6 {
+    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+}
+
+.grid8 {
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+}
+
+.grid10 {
+    grid-template-columns: 1fr 1fr 1fr 1fr 1fr;
     grid-template-rows: 1fr 1fr;
 }

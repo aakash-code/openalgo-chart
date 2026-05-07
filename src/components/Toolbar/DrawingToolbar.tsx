@@ -384,4 +384,4 @@ const DrawingToolbar: React.FC<DrawingToolbarProps> = ({
     );
 };
 
-export default DrawingToolbar;
+export default React.memo(DrawingToolbar);

@@ -3,7 +3,7 @@ import type { MouseEvent, MutableRefObject } from 'react';
 import styles from './ChartGrid.module.css';
 import ChartComponent from './ChartComponent';
 
-type LayoutType = '1' | '2' | '3' | '4';
+type LayoutType = '1' | '2' | '2v' | '3' | '4' | '5' | '6' | '8' | '10';
 
 interface Indicator {
     type: string;
@@ -24,17 +24,23 @@ interface StrategyConfig {
 
 interface Alert {
     id: string;
+    price: number;
+    type: string;
+    symbol: string;
+    exchange: string;
     [key: string]: unknown;
 }
 
 interface AlertEvent {
+    price?: number;
+    alertPrice?: number;
+    timestamp?: number | string;
     type: string;
-    alert: Alert;
     [key: string]: unknown;
 }
 
 interface Chart {
-    id: string;
+    id: number;
     symbol: string;
     exchange?: string;
     interval: string;
@@ -51,15 +57,15 @@ interface ChartRef {
 export interface ChartGridProps {
     charts: Chart[];
     layout: LayoutType;
-    activeChartId: string;
-    onActiveChartChange: (chartId: string) => void;
-    onMaximizeChart?: (chartId: string) => void;
-    chartRefs: MutableRefObject<Record<string, ChartRef | null>>;
-    onAlertsSync?: (chartId: string, symbol: string, exchange: string, alerts: Alert[]) => void;
+    activeChartId: number;
+    onActiveChartChange: (chartId: number) => void;
+    onMaximizeChart?: (chartId: number) => void;
+    chartRefs: MutableRefObject<Record<number, ChartRef | null>>;
+    onAlertsSync?: (chartId: number, symbol: string, exchange: string, alerts: Alert[]) => void;
     onDrawingsSync?: (drawings: unknown[]) => void;
-    onAlertTriggered?: (chartId: string, symbol: string, exchange: string, event: AlertEvent) => void;
-    onReplayModeChange?: (chartId: string, isActive: boolean) => void;
-    onOHLCDataUpdate?: (data: unknown) => void;
+    onAlertTriggered?: (chartId: number, symbol: string, exchange: string, event: AlertEvent) => void;
+    onReplayModeChange?: (chartId: number, isActive: boolean) => void;
+    onOHLCDataUpdate?: (symbol: string, exchange: string, interval: string, data: any[]) => void;
     [key: string]: unknown; // Additional chart props
 }
 
@@ -80,13 +86,19 @@ const ChartGrid: React.FC<ChartGridProps> = ({
     const getGridClass = (): string => {
         switch (layout) {
             case '2': return styles.grid2;
+            case '2v': return styles.grid2v;
             case '3': return styles.grid3;
             case '4': return styles.grid4;
+            case '5': return styles.grid6; // 5 charts uses 6 grid
+            case '6': return styles.grid6;
+            case '8': return styles.grid8;
+            case '10': return styles.grid10;
             default: return styles.grid1;
         }
     };
 
-    const handleChartClick = (e: MouseEvent<HTMLDivElement>, chartId: string): void => {
+    const handleChartClick = (e: MouseEvent<HTMLDivElement>, chartId: number): void => {
+        console.log('[ChartGrid] Chart clicked:', chartId, 'Active was:', activeChartId);
         if (e.altKey && onMaximizeChart) {
             e.preventDefault();
             e.stopPropagation();
@@ -95,6 +107,7 @@ const ChartGrid: React.FC<ChartGridProps> = ({
             onActiveChartChange(chartId);
         }
     };
+
 
     return (
         <div className={`${styles.gridContainer} ${getGridClass()}`}>
@@ -129,4 +142,4 @@ const ChartGrid: React.FC<ChartGridProps> = ({
     );
 };
 
-export default ChartGrid;
+export default React.memo(ChartGrid);

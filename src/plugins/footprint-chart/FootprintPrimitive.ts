@@ -13,14 +13,18 @@
 import type {
     IChartApi,
     ISeriesApi,
-    ISeriesPrimitivePaneRenderer,
-    ISeriesPrimitivePaneView,
+    IPrimitivePaneRenderer,
+    IPrimitivePaneView,
     SeriesAttachedParameter,
     SeriesOptionsMap,
     Time,
-    BitmapCoordinatesRenderingScope,
     ITimeScaleApi,
 } from 'lightweight-charts';
+
+import {
+    BitmapCoordinatesRenderingScope,
+    CanvasRenderingTarget2D,
+} from 'fancy-canvas';
 
 import {
     COLORS,
@@ -57,34 +61,17 @@ export interface FootprintData {
 }
 
 /**
- * Rendering scope with bitmap context
- */
-interface RenderingScope extends BitmapCoordinatesRenderingScope {
-    context: CanvasRenderingContext2D;
-    bitmapSize: { width: number; height: number };
-    horizontalPixelRatio: number;
-    verticalPixelRatio: number;
-}
-
-/**
- * Target interface for drawing
- */
-interface DrawTarget {
-    useBitmapCoordinateSpace(callback: (scope: RenderingScope) => void): void;
-}
-
-/**
  * Footprint Pane Renderer - handles Canvas2D drawing
  */
-class FootprintPaneRenderer implements ISeriesPrimitivePaneRenderer {
+class FootprintPaneRenderer implements IPrimitivePaneRenderer {
     private _source: FootprintPrimitive;
 
     constructor(source: FootprintPrimitive) {
         this._source = source;
     }
 
-    draw(target: DrawTarget): void {
-        target.useBitmapCoordinateSpace((scope: RenderingScope) => {
+    draw(target: CanvasRenderingTarget2D): void {
+        target.useBitmapCoordinateSpace((scope) => {
             const { context: ctx, bitmapSize, horizontalPixelRatio, verticalPixelRatio } = scope;
             const footprints = this._source._footprints;
             const options = this._source._options;
@@ -488,7 +475,7 @@ class FootprintPaneRenderer implements ISeriesPrimitivePaneRenderer {
 /**
  * Footprint Pane View - creates renderer for drawing
  */
-class FootprintPaneView implements ISeriesPrimitivePaneView {
+class FootprintPaneView implements IPrimitivePaneView {
     private _source: FootprintPrimitive;
 
     constructor(source: FootprintPrimitive) {
@@ -499,7 +486,7 @@ class FootprintPaneView implements ISeriesPrimitivePaneView {
         // Called when chart needs to update
     }
 
-    renderer(): ISeriesPrimitivePaneRenderer {
+    renderer(): IPrimitivePaneRenderer {
         return new FootprintPaneRenderer(this._source);
     }
 
@@ -550,7 +537,7 @@ export class FootprintPrimitive {
     /**
      * Returns pane views for rendering
      */
-    paneViews(): readonly ISeriesPrimitivePaneView[] {
+    paneViews(): readonly IPrimitivePaneView[] {
         return this._paneViews;
     }
 

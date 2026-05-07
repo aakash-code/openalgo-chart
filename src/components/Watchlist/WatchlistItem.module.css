@@ -70,6 +70,16 @@
     white-space: nowrap;
     flex-shrink: 0;
     color: var(--tv-color-text-primary, #D1D4DC);
+    display: flex;
+    align-items: center;
+}
+
+.flag {
+    width: 6px;
+    height: 12px;
+    border-radius: 2px;
+    margin-right: 6px;
+    flex-shrink: 0;
 }
 
 /* Price columns */

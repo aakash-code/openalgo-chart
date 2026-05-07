@@ -13,8 +13,9 @@ import ChartContextMenu from './ChartContextMenu';
 import IndicatorSettingsDialog from '../IndicatorSettings/IndicatorSettingsDialog';
 import { getIndicatorConfig } from '../IndicatorSettings/indicatorConfigs';
 import { getKlines, getHistoricalKlines, subscribeToTicker, saveDrawings, loadDrawings } from '../../services/openalgo';
+import { loadCandlesFromCache } from '../../services/db/chartCache';
 import { combineMultiLegOHLC } from '../../services/optionChain';
-import { getAccurateISTTimestamp, syncTimeWithAPI, shouldResync } from '../../services/timeService';
+import { getAccurateUTCTimestamp, getAccurateISTTimestamp, syncTimeWithAPI, shouldResync } from '../../services/timeService';
 import { formatCurrency } from '../../utils/shared/formatters';
 import {
     calculateSMA,
@@ -26,17 +27,24 @@ import {
     calculateATR,
     calculateStochastic,
     calculateVWAP,
-    calculateSupertrend
+    calculateSupertrend,
+    calculatePatternRecognition
 } from '../../utils/indicators';
 
 import { calculateTPO } from '../../utils/indicators/tpo';
 import { calculateFirstCandle } from '../../utils/indicators/firstCandle';
 import { calculateRangeBreakout } from '../../utils/indicators/rangeBreakout';
+import { calculateVolumetricCandlePair } from '../../utils/indicators/volumetricCandlePair';
+import { calculateInstitutionalVolumetric } from '../../utils/indicators/institutionalVolumetric';
 import { calculatePriceActionRange } from '../../utils/indicators/priceActionRange';
 import { calculateANNStrategy } from '../../utils/indicators/annStrategy';
 import { calculateHilengaMilenga } from '../../utils/indicators/hilengaMilenga';
-import { calculateRiskPosition, autoDetectSide } from '../../utils/indicators/riskCalculator';
-import { createRiskCalculatorPrimitive, removeRiskCalculatorPrimitive } from '../../utils/indicators/riskCalculatorChart';
+import { calculateRiskPosition, autoDetectSide, riskCalculatorStateService } from '../../utils/indicators';
+import { 
+    createRiskCalculatorPrimitive, 
+    updateRiskCalculatorPrimitive,
+    removeRiskCalculatorPrimitive 
+} from '../../utils/indicators/riskCalculatorChart';
 import { TPOProfilePrimitive } from '../../plugins/tpo-profile/TPOProfilePrimitive';
 import { intervalToSeconds } from '../../utils/timeframes';
 import { logger } from '../../utils/logger.js';
@@ -47,6 +55,8 @@ import '../../plugins/line-tools/floating-toolbar.css';
 import ReplayControls from '../Replay/ReplayControls';
 import { pineScriptService } from '../../services/pineScriptService';
 import ReplaySlider from '../Replay/ReplaySlider';
+import { crosshairSyncService } from '../../services/crosshairSyncService';
+import useWorkspaceStore from '../../store/workspaceStore';
 import PriceScaleMenu from './PriceScaleMenu';
 import PriceScaleContextMenu, { SCALE_MODES } from './PriceScaleContextMenu';
 import { VisualTrading } from '../../plugins/visual-trading/visual-trading';
@@ -59,6 +69,7 @@ import { TOOL_MAP, hexToRgba, areSymbolsEquivalent, addFutureWhitespacePoints, f
 import { createSeries, transformData } from './utils/seriesFactories';
 import { createIndicatorSeries } from './utils/indicatorCreators';
 import { updateIndicatorSeries } from './utils/indicatorUpdaters';
+import { VerticalLine } from '../../plugins/line-tools/tools/vertical-line';
 import { cleanupIndicators } from './utils/indicatorCleanup';
 import {
     DEFAULT_CANDLE_WINDOW,
@@ -172,6 +183,38 @@ const ChartComponent = forwardRef<any, ChartComponentProps>(({
     // Get orders and positions from OrderContext
     const { activeOrders: orders = [], activePositions: positions = [], onModifyOrder, onCancelOrder } = useOrders();
 
+    // Get synchronization state from workspace store
+    const isSyncEnabled = useWorkspaceStore(state => state.isSyncEnabled);
+    const syncOptions = useWorkspaceStore(state => state.syncOptions);
+    const activeChartId = useWorkspaceStore(state => state.activeChartId);
+    const setCharts = useWorkspaceStore(state => state.setCharts);
+
+    // Update global sync state in service
+    useEffect(() => {
+        crosshairSyncService.setSyncEnabled(isSyncEnabled && syncOptions.crosshair);
+    }, [isSyncEnabled, syncOptions.crosshair]);
+
+    // Handle incoming crosshair sync events
+    useEffect(() => {
+        if (!chartRef.current || !isSyncEnabled || !syncOptions.crosshair) return;
+
+        const unsubscribe = crosshairSyncService.onMove((event) => {
+            // Ignore events from our own chart
+            // However, activeChartId might be unreliable if multiple components mount
+            // We rely on the 'source' flag in the service
+            if (event.source === 'sync' && chartRef.current) {
+                // Manually move the crosshair
+                if (event.point) {
+                    chartRef.current.setCrosshairPosition(event.price, event.time, mainSeriesRef.current);
+                }
+            }
+        });
+
+        return () => {
+            unsubscribe();
+        };
+    }, [isSyncEnabled, syncOptions.crosshair]);
+
     // Memoize comparisons - use length and first item as proxy for deep comparison
     // This avoids JSON.stringify on every render while still detecting meaningful changes
     const comparisonSymbols = useMemo(() => comparisonSymbolsProp, [
@@ -184,6 +227,56 @@ const ChartComponent = forwardRef<any, ChartComponentProps>(({
     const [isLoading, setIsLoading] = useState(true);
     const [contextMenu, setContextMenu] = useState({ show: false, x: 0, y: 0, price: null as number | null, orderId: null as string | null });
     const [isVerticalCursorLocked, setIsVerticalCursorLocked] = useState(false);
+    const lockedLogicalIndexRef = useRef<number | null>(null);
+    const lockedVerticalLineRef = useRef<any>(null);
+    const lastMouseMoveRef = useRef<{ x: number, y: number } | null>(null);
+
+    // Sync vertical cursor lock
+    useEffect(() => {
+        if (isVerticalCursorLocked) {
+            if (chartRef.current && mainSeriesRef.current && lastMouseMoveRef.current) {
+                const chart = chartRef.current;
+                const timeScale = chart.timeScale();
+                const logical = timeScale.coordinateToLogical(lastMouseMoveRef.current.x);
+
+                if (logical !== null) {
+                    lockedLogicalIndexRef.current = logical as number;
+
+                    // Add visual vertical line
+                    if (!lockedVerticalLineRef.current) {
+                        const verticalLine = new VerticalLine(chart, mainSeriesRef.current, logical, {
+                            lineColor: '#2962FF',
+                            width: 1,
+                            lineStyle: 2, // Dashed
+                            showLabel: false
+                        });
+                        mainSeriesRef.current.attachPrimitive(verticalLine);
+                        lockedVerticalLineRef.current = verticalLine;
+                    } else {
+                        lockedVerticalLineRef.current.updatePosition(logical);
+                    }
+                }
+            }
+        } else {
+            // Cleanup lock
+            if (lockedVerticalLineRef.current && mainSeriesRef.current) {
+                try {
+                    mainSeriesRef.current.detachPrimitive(lockedVerticalLineRef.current);
+                } catch (e) { /* ignore */ }
+                lockedVerticalLineRef.current = null;
+            }
+            lockedLogicalIndexRef.current = null;
+        }
+
+        return () => {
+            if (!isVerticalCursorLocked && lockedVerticalLineRef.current && mainSeriesRef.current) {
+                try {
+                    mainSeriesRef.current.detachPrimitive(lockedVerticalLineRef.current);
+                } catch (e) { /* ignore */ }
+                lockedVerticalLineRef.current = null;
+            }
+        };
+    }, [isVerticalCursorLocked]);
     const [priceScaleMenu, setPriceScaleMenu] = useState({ visible: false, x: 0, y: 0, price: null });
     // Right-click price scale context menu state (TradingView-style)
     const [priceScaleContextMenu, setPriceScaleContextMenu] = useState({ visible: false, x: 0, y: 0, priceScaleId: '' as string });
@@ -372,6 +465,8 @@ const ChartComponent = forwardRef<any, ChartComponentProps>(({
     const firstCandleSeriesRef = useRef([]); // Array of line series for all days' high/low
     const priceActionRangeSeriesRef = useRef([]); // Array of line series for PAR support/resistance
     const rangeBreakoutSeriesRef = useRef([]); // Array of line series for range breakout high/low
+    const volumetricCandlePairSeriesRef = useRef([]); // Array of line series for volumetric candle pair zones
+    const institutionalVolumetricSeriesRef = useRef([]); // Array of line series for institutional volumetric zones
     const annStrategySeriesRef = useRef(null); // ANN Strategy prediction series
     const annStrategyPaneRef = useRef(null); // ANN Strategy pane reference
     const riskCalculatorPrimitiveRef = useRef(null); // Risk Calculator draggable primitive
@@ -382,6 +477,7 @@ const ChartComponent = forwardRef<any, ChartComponentProps>(({
     const comparisonPanesRef = useRef(new Map()); // Track panes for 'newPane' comparison mode
     const visualTradingRef = useRef(null);
     const [error, setError] = useState(null);
+    const [institutionalDashboard, setInstitutionalDashboard] = useState<any>(null);
 
     // Pane context menu hook
     const {
@@ -540,6 +636,7 @@ const ChartComponent = forwardRef<any, ChartComponentProps>(({
 
     // Risk Calculator State
     const [riskCalculatorResults, setRiskCalculatorResults] = useState(null);
+    const [draggedRiskResults, setDraggedRiskResults] = useState(null);
 
     const [panePositions, setPanePositions] = useState({}); // Tracks vertical position of each indicator pane
     const indicatorDropdownRef = useRef(null);
@@ -1338,6 +1435,11 @@ const ChartComponent = forwardRef<any, ChartComponentProps>(({
                 // Update indicator settings
                 if (onIndicatorSettings) {
                     onIndicatorSettings(riskCalcInd.id, updates);
+                    
+                    // Persist for this symbol
+                    if (symbol) {
+                        riskCalculatorStateService.saveState(symbol, updates);
+                    }
                 }
             } catch (error) {
                 logger.error('Error setting price from Alt+Click:', error);
@@ -1423,6 +1525,62 @@ const ChartComponent = forwardRef<any, ChartComponentProps>(({
             }
         };
     }, [symbol, interval]);
+
+    const [placementMode, setPlacementMode] = useState<'entry' | 'stopLoss' | 'target' | null>(null);
+    const [placementPoints, setPlacementPoints] = useState<{ entry?: number; stopLoss?: number; target?: number }>({});
+
+    // Handle chart clicks for Risk Calculator placement
+    useEffect(() => {
+        if (!placementMode || !chartRef.current || !mainSeriesRef.current) return;
+
+        const handleChartClick = (param) => {
+            if (!param.point) return;
+            const price = mainSeriesRef.current.coordinateToPrice(param.point.y);
+            if (price === null) return;
+
+            const riskCalcInd = indicatorsRef.current?.find(i => i.type === 'riskCalculator');
+            if (!riskCalcInd) return;
+
+            if (placementMode === 'entry') {
+                setPlacementPoints({ entry: price });
+                setPlacementMode('stopLoss');
+            } else if (placementMode === 'stopLoss') {
+                setPlacementPoints(prev => ({ ...prev, stopLoss: price }));
+                setPlacementMode('target');
+            } else if (placementMode === 'target') {
+                const finalPoints = { ...placementPoints, target: price };
+                setPlacementPoints({});
+                setPlacementMode(null);
+
+                // Calculate side
+                const detectedSide = autoDetectSide(finalPoints.entry!, finalPoints.stopLoss!);
+
+                const updates = {
+                    entryPrice: finalPoints.entry,
+                    stopLossPrice: finalPoints.stopLoss,
+                    targetPrice: finalPoints.target,
+                    side: detectedSide || riskCalcInd.side || 'BUY'
+                };
+
+                if (onIndicatorSettings) {
+                    onIndicatorSettings(riskCalcInd.id, updates);
+                    if (symbol) {
+                        riskCalculatorStateService.saveState(symbol, updates);
+                    }
+                }
+            }
+        };
+
+        const chart = chartRef.current;
+        chart.subscribeClick(handleChartClick);
+        return () => {
+            try {
+                chart.unsubscribeClick(handleChartClick);
+            } catch (e) {
+                // Ignore unsubscribe errors
+            }
+        };
+    }, [placementMode, placementPoints, indicators, onIndicatorSettings, symbol]);
 
     // Track chart visibility to avoid unnecessary RAF work
     useEffect(() => {
@@ -2069,6 +2227,43 @@ const ChartComponent = forwardRef<any, ChartComponentProps>(({
 
         // Handle Crosshair Move for Data Box and Legend
         const handleCrosshairMove = (param) => {
+            // Track last mouse position for locking
+            if (param.point) {
+                lastMouseMoveRef.current = { x: param.point.x, y: param.point.y };
+            }
+
+            // If cursor is locked, override position
+            if (isVerticalCursorLocked && lockedLogicalIndexRef.current !== null && chartRef.current) {
+                // If this move came from mouse, force it back to locked position
+                if (param.point) {
+                    const chart = chartRef.current;
+                    const timeScale = chart.timeScale();
+                    const lockedTime = timeScale.coordinateToTime(timeScale.logicalToCoordinate(lockedLogicalIndexRef.current as any) || 0);
+
+                    if (lockedTime) {
+                        // Force crosshair to stay at locked time
+                        // Note: setCrosshairPosition doesn't trigger another 'mouse' move event usually
+                        // We use a small timeout to avoid recursion just in case
+                        setTimeout(() => {
+                            if (chartRef.current) {
+                                chartRef.current.setCrosshairPosition(param.price || 0, lockedTime, mainSeriesRef.current);
+                            }
+                        }, 0);
+                    }
+                }
+            }
+
+            // Broadcast to other charts if sync is enabled
+            if (isSyncEnabled && syncOptions.crosshair && param.point) {
+                crosshairSyncService.broadcastMove({
+                    chartId: (indicators as any)?._chartId || 0, // Fallback if no chartId available
+                    time: param.time,
+                    price: param.seriesData.get(mainSeriesRef.current)?.close || param.seriesData.get(mainSeriesRef.current)?.value,
+                    point: param.point,
+                    source: 'mouse'
+                });
+            }
+
             if (!param.time) {
                 setOhlcData(null);
                 setIndicatorValues({});
@@ -2438,6 +2633,25 @@ const ChartComponent = forwardRef<any, ChartComponentProps>(({
             setIsLoading(true);
 
             try {
+                // GHOST CHART OPTIMIZATION: Load from local cache instantly
+                // This gives the user an instant chart while we fetch the latest data
+                if (isAuthenticated && !strategyConfig) {
+                    const cached = await loadCandlesFromCache(symbol, exchange, interval);
+                    if (cached && cached.length > 0 && !cancelled) {
+                        logger.debug('[GhostChart] Initializing with', cached.length, 'cached candles');
+                        dataRef.current = cached;
+                        const transformedCached = transformData(cached, chartTypeRef.current || 'candlestick');
+                        if (mainSeriesRef.current) {
+                            mainSeriesRef.current.setData(transformedCached);
+                            // Initial indicator run with cached data
+                            updateIndicators(cached, indicators);
+                            // Set ready state so user can interact
+                            chartReadyRef.current = true;
+                            setIsLoading(false); // Hide spinner early
+                        }
+                    }
+                }
+
                 let data;
 
                 // Check if we're in strategy mode (multi-leg)
@@ -2558,12 +2772,13 @@ const ChartComponent = forwardRef<any, ChartComponentProps>(({
                             const intervalSeconds = intervalToSeconds(currentInterval);
                             if (!Number.isFinite(intervalSeconds) || intervalSeconds <= 0) return;
 
+                            if (shouldResync()) syncTimeWithAPI();
+                            const currentUTCTime = getAccurateUTCTimestamp();
+                            // Align real-time candle boundary with historical data IST offset
+                            const currentCandleTime = Math.floor(currentUTCTime / intervalSeconds) * intervalSeconds + IST_OFFSET_SECONDS;
+
                             const lastIndex = currentData.length - 1;
                             const lastCandleTime = currentData[lastIndex].time;
-
-                            if (shouldResync()) syncTimeWithAPI();
-                            const currentISTTime = getAccurateISTTimestamp();
-                            const currentCandleTime = Math.floor(currentISTTime / intervalSeconds) * intervalSeconds;
 
                             // Robust time comparison using helper
                             const lastTimeVal = getTimeValue(lastCandleTime);
@@ -2646,27 +2861,48 @@ const ChartComponent = forwardRef<any, ChartComponentProps>(({
                                 return;
                             }
 
-                            const currentData = dataRef.current;
-                            if (!currentData || currentData.length === 0) return;
-
                             // Use ref to avoid closure capture
                             const currentInterval = intervalRef.current;
                             const intervalSeconds = intervalToSeconds(currentInterval);
                             if (!Number.isFinite(intervalSeconds) || intervalSeconds <= 0) return;
 
-                            const lastIndex = currentData.length - 1;
-                            const lastCandleTime = currentData[lastIndex].time;
-
-                            // Use accurate IST time from WorldTimeAPI for candle creation
-                            // Resync if needed (every 5 minutes)
+                            // Use accurate UTC time for candle creation (aligned with historical IST offset)
                             if (shouldResync()) {
                                 syncTimeWithAPI();
                             }
-                            const currentISTTime = getAccurateISTTimestamp();
-                            const currentCandleTime = Math.floor(currentISTTime / intervalSeconds) * intervalSeconds;
+                            const currentUTCTime = getAccurateUTCTimestamp();
+                            const currentCandleTime = Math.floor(currentUTCTime / intervalSeconds) * intervalSeconds + IST_OFFSET_SECONDS;
 
-                            // Check if we need a new candle (current time is in a new interval period)
-                            const needNewCandle = currentCandleTime > lastCandleTime;
+                            const currentData = dataRef.current;
+                            
+                            // If no data exists, initialize with the first tick
+                            if (!currentData || currentData.length === 0) {
+                                const initialCandle = {
+                                    time: currentCandleTime,
+                                    open: closePrice,
+                                    high: closePrice,
+                                    low: closePrice,
+                                    close: closePrice,
+                                    volume: tickVolume,
+                                };
+                                dataRef.current = [initialCandle];
+                                cumulativeVolumeRef.current = tickVolume;
+                                
+                                const currentChartType = chartTypeRef.current;
+                                const transformed = transformData([initialCandle], currentChartType);
+                                if (mainSeriesRef.current) {
+                                    mainSeriesRef.current.setData(transformed);
+                                    updateOhlcFromLatest();
+                                }
+                                return;
+                            }
+
+                            const lastIndex = currentData.length - 1;
+                            const lastCandleTime = currentData[lastIndex].time;
+
+                            // Robust time comparison using helper
+                            const lastTimeVal = getTimeValue(lastCandleTime);
+                            const needNewCandle = currentCandleTime > lastTimeVal;
 
                             let candle;
                             if (needNewCandle) {
@@ -2725,13 +2961,6 @@ const ChartComponent = forwardRef<any, ChartComponentProps>(({
                             const transformedCandle = transformData([candle], currentChartType)[0];
 
                             if (transformedCandle && mainSeriesRef.current && !isReplayModeRef.current) {
-                                // PERFORMANCE NOTE: Using setData() instead of update() for real-time WebSocket updates.
-                                // This regenerates 120 whitespace points on every tick, which is less efficient.
-                                // However, this is NECESSARY because update() cannot insert data before existing
-                                // whitespace points (future time labels). If future optimization is needed,
-                                // consider removing whitespace points feature or finding alternative approach.
-                                // Impact: ~1-2 ticks/second in practice, so this should be negligible.
-                                // To switch back to update(): remove whitespace points and use mainSeriesRef.current.update(transformedCandle);
                                 try {
                                     const currentChartTypeForSet = chartTypeRef.current;
                                     const transformedFullData = transformData(currentData, currentChartTypeForSet);
@@ -3012,12 +3241,16 @@ const ChartComponent = forwardRef<any, ChartComponentProps>(({
 
     // Callback for when user drags risk calculator price lines
     const handleRiskCalculatorDrag = useCallback((lineType, newPrice) => {
-        const riskCalcInd = indicators.find(i => i.type === 'riskCalculator');
+        const riskCalcInd = indicatorsRef.current?.find(i => i.type === 'riskCalculator');
         if (!riskCalcInd) return;
 
-        // ALWAYS preserve the current targetPrice to prevent recalculation
+        // Clear real-time drag state on final change
+        setDraggedRiskResults(null);
+
+        // ALWAYS preserve the current targetPrice and targets to prevent recalculation
         const updates: any = {
-            targetPrice: riskCalcInd.targetPrice || null
+            targetPrice: riskCalcInd.targetPrice || null,
+            targets: riskCalcInd.targets || []
         };
 
         if (lineType === 'entry') {
@@ -3026,13 +3259,74 @@ const ChartComponent = forwardRef<any, ChartComponentProps>(({
             updates.stopLossPrice = newPrice;
         } else if (lineType === 'target') {
             updates.targetPrice = newPrice;
+        } else if (lineType.startsWith('target-')) {
+            const idx = parseInt(lineType.split('-')[1]);
+            const newTargets = [...updates.targets];
+            if (newTargets[idx]) {
+                newTargets[idx] = { ...newTargets[idx], price: newPrice };
+                updates.targets = newTargets;
+            }
+        }
+
+        // Auto-detect side on drag end
+        const finalEntry = updates.entryPrice !== undefined ? updates.entryPrice : riskCalcInd.entryPrice;
+        const finalSL = updates.stopLossPrice !== undefined ? updates.stopLossPrice : riskCalcInd.stopLossPrice;
+        const detectedSide = autoDetectSide(finalEntry, finalSL);
+        if (detectedSide) {
+            updates.side = detectedSide;
         }
 
         // This triggers re-calculation through onIndicatorSettings
         if (onIndicatorSettings) {
             onIndicatorSettings(riskCalcInd.id, updates);
+            
+            // Persist for this symbol
+            if (symbol) {
+                riskCalculatorStateService.saveState(symbol, updates);
+            }
         }
-    }, [indicators, onIndicatorSettings]);
+    }, [onIndicatorSettings, symbol]);
+
+    const handleRiskCalculatorDragRealtime = useCallback((lineType, newPrice) => {
+        const riskCalcInd = indicatorsRef.current?.find(i => i.type === 'riskCalculator');
+        if (!riskCalcInd) return;
+
+        // Clone current params but use new price
+        const params: any = {
+            capital: riskCalcInd.capital || 100000,
+            riskPercent: riskCalcInd.riskPercent || 2,
+            entryPrice: riskCalcInd.entryPrice || 0,
+            stopLossPrice: riskCalcInd.stopLossPrice || 0,
+            targetPrice: riskCalcInd.targetPrice || null,
+            targets: riskCalcInd.targets || [],
+            riskRewardRatio: riskCalcInd.riskRewardRatio || 2,
+            side: riskCalcInd.side || 'BUY',
+            leverage: riskCalcInd.leverage || 1,
+            segment: riskCalcInd.segment || 'Equity Intraday',
+            exchange: riskCalcInd.exchange || 'NSE'
+        };
+
+        if (lineType === 'entry') params.entryPrice = newPrice;
+        else if (lineType === 'stopLoss') params.stopLossPrice = newPrice;
+        else if (lineType === 'target') params.targetPrice = newPrice;
+        else if (lineType.startsWith('target-')) {
+            const idx = parseInt(lineType.split('-')[1]);
+            const newTargets = [...params.targets];
+            if (newTargets[idx]) {
+                newTargets[idx] = { ...newTargets[idx], price: newPrice };
+                params.targets = newTargets;
+            }
+        }
+
+        // Auto-detect side during real-time drag
+        const detectedSide = autoDetectSide(params.entryPrice, params.stopLossPrice);
+        if (detectedSide) {
+            params.side = detectedSide;
+        }
+
+        const results = calculateRiskPosition(params);
+        setDraggedRiskResults(results);
+    }, []);
 
     const updateIndicators = useCallback((data, indicatorsArray) => {
         logger.debug('[DEBUG] updateIndicators CALLED');
@@ -3265,44 +3559,253 @@ const ChartComponent = forwardRef<any, ChartComponentProps>(({
             // Note: markers are handled collectively at the end of updateIndicators
         }
 
+        // ==================== VOLUMETRIC CANDLE PAIR INDICATOR ====================
+        const vcpInd = indicatorsArray?.find(ind => ind.type === 'volumetricCandlePair');
+        const vcpEnabled = vcpInd?.visible !== false;
+
+        if (vcpEnabled && vcpInd && data && data.length > 0) {
+            const zoneBorderColor = vcpInd.zoneBorderColor || '#008080';
+            const zoneFillColor = vcpInd.zoneFillColor || 'rgba(0, 128, 128, 0.1)';
+            const c1Color = vcpInd.c1Color || '#FFA500';
+            const c2Color = vcpInd.c2Color || '#800080';
+
+            const result = calculateVolumetricCandlePair(data, {
+                showHL: vcpInd.showHL !== false,
+                showBreakouts: vcpInd.showBreakouts !== false,
+                useDeltaFilter: vcpInd.useDeltaFilter !== false,
+                useTrendFilter: vcpInd.useTrendFilter !== false,
+                emaPeriod1: vcpInd.emaPeriod1 || 8,
+                emaPeriod2: vcpInd.emaPeriod2 || 21,
+                emaPeriod3: vcpInd.emaPeriod3 || 50,
+                emaPeriod4: vcpInd.emaPeriod4 || 100,
+                c1Color,
+                c2Color
+            });
+
+            // Remove old line series if count changed
+            const existingCount = volumetricCandlePairSeriesRef.current.length;
+            const neededCount = (result.allZones?.length || 0) * 2;
+
+            if (existingCount !== neededCount) {
+                for (const series of volumetricCandlePairSeriesRef.current) {
+                    try { chartRef.current.removeSeries(series); } catch (e) { /* ignore */ }
+                }
+                volumetricCandlePairSeriesRef.current = [];
+            }
+
+            // Create/update line series for each day's zone high and low
+            if (result.allZones && result.allZones.length > 0 && chartRef.current) {
+                let seriesIndex = 0;
+                for (const zone of result.allZones) {
+                    const { high, low, startTime, endTime } = zone;
+
+                    // High line
+                    if (!volumetricCandlePairSeriesRef.current[seriesIndex]) {
+                        volumetricCandlePairSeriesRef.current[seriesIndex] = chartRef.current.addSeries(LineSeries, {
+                            color: zoneBorderColor, lineWidth: 2, lineStyle: 0,
+                            priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
+                        });
+                    }
+                    volumetricCandlePairSeriesRef.current[seriesIndex].setData([
+                        { time: startTime, value: high },
+                        { time: endTime, value: high }
+                    ]);
+                    seriesIndex++;
+
+                    // Low line
+                    if (!volumetricCandlePairSeriesRef.current[seriesIndex]) {
+                        volumetricCandlePairSeriesRef.current[seriesIndex] = chartRef.current.addSeries(LineSeries, {
+                            color: zoneBorderColor, lineWidth: 2, lineStyle: 0,
+                            priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
+                        });
+                    }
+                    volumetricCandlePairSeriesRef.current[seriesIndex].setData([
+                        { time: startTime, value: low },
+                        { time: endTime, value: low }
+                    ]);
+                    seriesIndex++;
+                }
+            }
+
+            // Add VCP markers to allMarkers
+            if (result.markers && result.markers.length > 0) {
+                allMarkers.push(...result.markers);
+            }
+
+            // Track type for cleanup
+            if (vcpInd?.id) {
+                indicatorTypesMap.current.set(vcpInd.id, 'volumetricCandlePair');
+            }
+        } else if (!vcpEnabled) {
+            // Remove series when disabled
+            for (const series of volumetricCandlePairSeriesRef.current) {
+                try { chartRef.current.removeSeries(series); } catch (e) { /* ignore */ }
+            }
+            volumetricCandlePairSeriesRef.current = [];
+        }
+
+        // ==================== INSTITUTIONAL VOLUMETRIC INDICATOR ====================
+        const instVolInd = indicatorsArray?.find(ind => ind.type === 'institutionalVolumetric');
+        const instVolEnabled = instVolInd?.visible !== false;
+
+        if (instVolEnabled && instVolInd && data && data.length > 0) {
+            const result = calculateInstitutionalVolumetric(data, {
+                useInstitutionalVolume: instVolInd.useInstitutionalVolume !== false,
+                minVolumeMultiplier: instVolInd.minVolumeMultiplier || 1.5,
+                usePaceAnalysis: instVolInd.usePaceAnalysis !== false,
+                paceMultiplier: instVolInd.paceMultiplier || 2.0,
+                useVSAFilter: instVolInd.useVSAFilter !== false,
+                minSpreadMultiplier: instVolInd.minSpreadMultiplier || 1.2,
+                useVWAPConfluence: instVolInd.useVWAPConfluence !== false,
+                useDeltaFilter: instVolInd.useDeltaFilter !== false,
+                useClimaxDetection: instVolInd.useClimaxDetection !== false,
+                climaxMultiplier: instVolInd.climaxMultiplier || 4.0,
+                useKillZones: instVolInd.useKillZones === true,
+                killZoneStartH: instVolInd.killZoneStartH || 9,
+                killZoneStartM: instVolInd.killZoneStartM || 15,
+                killZoneEndH: instVolInd.killZoneEndH || 11,
+                killZoneEndM: instVolInd.killZoneEndM || 0,
+                usePOCAlignment: instVolInd.usePOCAlignment !== false,
+                pocThresholdPercent: instVolInd.pocThresholdPercent || 0.5,
+                useTrendFilter: instVolInd.useTrendFilter !== false,
+                emaPeriod1: instVolInd.emaPeriod1 || 8,
+                emaPeriod2: instVolInd.emaPeriod2 || 21,
+                emaPeriod3: instVolInd.emaPeriod3 || 50,
+                emaPeriod4: instVolInd.emaPeriod4 || 100,
+                c1Color: instVolInd.c1Color || '#FFA500',
+                c2Color: instVolInd.c2Color || '#800080'
+            });
+
+            // Update Dashboard State
+            if (result.dashboard) {
+                setInstitutionalDashboard(result.dashboard);
+            } else {
+                setInstitutionalDashboard(null);
+            }
+
+            // Remove old line series if count changed
+            const existingCount = institutionalVolumetricSeriesRef.current.length;
+            const neededCount = (result.allZones?.length || 0) * 2;
+
+            if (existingCount !== neededCount) {
+                for (const series of institutionalVolumetricSeriesRef.current) {
+                    try { chartRef.current.removeSeries(series); } catch (e) { /* ignore */ }
+                }
+                institutionalVolumetricSeriesRef.current = [];
+            }
+
+            // Create/update line series for each day's zone high and low
+            if (result.allZones && result.allZones.length > 0 && chartRef.current) {
+                let seriesIndex = 0;
+                for (const zone of result.allZones) {
+                    const { high, low, startTime, endTime, isTier1 } = zone;
+                    const zoneColor = isTier1 ? '#FFD700' : '#008080';
+
+                    // High line
+                    if (!institutionalVolumetricSeriesRef.current[seriesIndex]) {
+                        institutionalVolumetricSeriesRef.current[seriesIndex] = chartRef.current.addSeries(LineSeries, {
+                            color: zoneColor, lineWidth: 2, lineStyle: 0,
+                            priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
+                        });
+                    } else {
+                        institutionalVolumetricSeriesRef.current[seriesIndex].applyOptions({ color: zoneColor });
+                    }
+                    institutionalVolumetricSeriesRef.current[seriesIndex].setData([
+                        { time: startTime, value: high },
+                        { time: endTime, value: high }
+                    ]);
+                    seriesIndex++;
+
+                    // Low line
+                    if (!institutionalVolumetricSeriesRef.current[seriesIndex]) {
+                        institutionalVolumetricSeriesRef.current[seriesIndex] = chartRef.current.addSeries(LineSeries, {
+                            color: zoneColor, lineWidth: 2, lineStyle: 0,
+                            priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
+                        });
+                    } else {
+                        institutionalVolumetricSeriesRef.current[seriesIndex].applyOptions({ color: zoneColor });
+                    }
+                    institutionalVolumetricSeriesRef.current[seriesIndex].setData([
+                        { time: startTime, value: low },
+                        { time: endTime, value: low }
+                    ]);
+                    seriesIndex++;
+                }
+            }
+
+            // Add markers
+            if (result.markers && result.markers.length > 0) {
+                allMarkers.push(...result.markers);
+            }
+
+            // Track type for cleanup
+            if (instVolInd?.id) {
+                indicatorTypesMap.current.set(instVolInd.id, 'institutionalVolumetric');
+            }
+        } else if (!instVolEnabled) {
+            // Remove series when disabled
+            for (const series of institutionalVolumetricSeriesRef.current) {
+                try { chartRef.current.removeSeries(series); } catch (e) { /* ignore */ }
+            }
+            institutionalVolumetricSeriesRef.current = [];
+            setInstitutionalDashboard(null);
+        }
+
         // ==================== RISK CALCULATOR INDICATOR ====================
         const riskCalculatorInd = indicatorsArray?.find(ind => ind.type === 'riskCalculator');
         const riskCalculatorEnabled = riskCalculatorInd?.visible !== false;
 
         if (riskCalculatorEnabled && riskCalculatorInd && mainSeriesRef.current) {
+            // Check for persisted state for this symbol (includes global merged)
+            const persistedState = symbol ? riskCalculatorStateService.loadState(symbol) : riskCalculatorStateService.loadGlobalSettings();
+            
             // Get current LTP for potential use
             const currentLTP = dataRef.current.length > 0 ? dataRef.current[dataRef.current.length - 1]?.close : 0;
 
-            // Calculate risk position based on indicator settings
-            const params = {
-                capital: riskCalculatorInd.capital || 100000,
-                riskPercent: riskCalculatorInd.riskPercent || 2,
-                entryPrice: riskCalculatorInd.entryPrice || currentLTP || 0,
-                stopLossPrice: riskCalculatorInd.stopLossPrice || 0,
-                targetPrice: riskCalculatorInd.targetPrice || null,
-                riskRewardRatio: riskCalculatorInd.riskRewardRatio || 2,
-                side: riskCalculatorInd.side || 'BUY'
+            // Calculate risk position based on indicator settings, falling back to persisted state
+            // Prioritize persisted state for user-specific settings (capital, risk, leverage)
+            const params: any = {
+                capital: persistedState?.capital !== undefined ? persistedState.capital : (riskCalculatorInd.capital || 100000),
+                riskPercent: persistedState?.riskPercent !== undefined ? persistedState.riskPercent : (riskCalculatorInd.riskPercent || 2),
+                entryPrice: riskCalculatorInd.entryPrice || persistedState?.entryPrice || currentLTP || 0,
+                stopLossPrice: riskCalculatorInd.stopLossPrice || persistedState?.stopLossPrice || 0,
+                targetPrice: riskCalculatorInd.targetPrice || (persistedState?.targetPrice !== undefined ? persistedState.targetPrice : null),
+                targets: riskCalculatorInd.targets || persistedState?.targets || [],
+                riskRewardRatio: riskCalculatorInd.riskRewardRatio || persistedState?.riskRewardRatio || 2,
+                side: riskCalculatorInd.side || persistedState?.side || 'BUY',
+                leverage: persistedState?.leverage !== undefined ? persistedState.leverage : (riskCalculatorInd.leverage || 1),
+                segment: riskCalculatorInd.segment || persistedState?.segment || 'Equity Intraday',
+                exchange: riskCalculatorInd.exchange || persistedState?.exchange || 'NSE'
             };
+
+            // If we have persisted values that differ from current indicator settings, 
+            // and we haven't applied them yet, update the settings
+            const hasPersistedPrices = persistedState && (
+                persistedState.entryPrice !== riskCalculatorInd.entryPrice ||
+                persistedState.stopLossPrice !== riskCalculatorInd.stopLossPrice ||
+                persistedState.targetPrice !== riskCalculatorInd.targetPrice
+            );
+
+            if (hasPersistedPrices && onIndicatorSettings) {
+                // Use setTimeout to avoid updating state during render
+                setTimeout(() => {
+                    onIndicatorSettings(riskCalculatorInd.id, {
+                        ...params
+                    });
+                }, 0);
+            }
 
             const results = calculateRiskPosition(params);
 
             // Update state for panel display
             setRiskCalculatorResults(results);
 
-            // Remove old primitive if exists
-            if (riskCalculatorPrimitiveRef.current) {
-                removeRiskCalculatorPrimitive({
-                    series: mainSeriesRef.current,
-                    primitiveRef: riskCalculatorPrimitiveRef
-                });
-            }
-
-            // Create new draggable primitive with updated prices
+            // Update or create primitive
             if (results && results.success) {
-                riskCalculatorPrimitiveRef.current = createRiskCalculatorPrimitive({
+                const primitiveParams = {
                     series: mainSeriesRef.current,
                     results: {
-                        ...results,
+                        ...(draggedRiskResults || results),
                         showTarget: riskCalculatorInd.showTarget !== false
                     },
                     settings: {
@@ -3311,9 +3814,18 @@ const ChartComponent = forwardRef<any, ChartComponentProps>(({
                         targetColor: riskCalculatorInd.targetColor || '#42a5f5',
                         lineWidth: riskCalculatorInd.lineWidth || 2
                     },
-                    side: riskCalculatorInd.side || 'BUY',
-                    onPriceChange: handleRiskCalculatorDrag
-                });
+                    side: (draggedRiskResults || results).side || 'BUY',
+                    onPriceChange: handleRiskCalculatorDrag,
+                    onPriceDrag: handleRiskCalculatorDragRealtime
+                };
+
+                if (riskCalculatorPrimitiveRef.current) {
+                    // Update existing primitive instead of re-creating it
+                    updateRiskCalculatorPrimitive(primitiveParams, riskCalculatorPrimitiveRef.current);
+                } else {
+                    // Create new primitive
+                    riskCalculatorPrimitiveRef.current = createRiskCalculatorPrimitive(primitiveParams);
+                }
 
                 // Track type for cleanup (primitive-based indicator)
                 if (riskCalculatorInd?.id) {
@@ -3441,6 +3953,8 @@ const ChartComponent = forwardRef<any, ChartComponentProps>(({
                 riskCalculatorPrimitiveRef,
                 firstCandleSeriesRef,
                 rangeBreakoutSeriesRef,
+                volumetricCandlePairSeriesRef,
+                institutionalVolumetricSeriesRef,
                 priceActionRangeSeriesRef
             }
         };
@@ -5172,8 +5686,38 @@ const ChartComponent = forwardRef<any, ChartComponentProps>(({
                     setPriceScaleSettings(prev => ({ ...prev, plusButtonVisible: value }))
                 }
                 onMergeScales={(type) => {
-                    // TODO: Implement merge scales functionality
-                    logger.debug('Merge scales:', type);
+                    const targetScaleId = type === 'no_scale' ? 'right' : type;
+
+                    // Move all indicators to the target scale
+                    if (indicators?.length > 0) {
+                        indicators.forEach(indicator => {
+                            if (onIndicatorSettings) {
+                                onIndicatorSettings(indicator.id, {
+                                    ...indicator,
+                                    priceScaleId: targetScaleId
+                                });
+                            }
+                        });
+                    }
+
+                    // Move all comparison symbols
+                    if (comparisonSymbols?.length > 0 && setCharts) {
+                        setCharts((prev: any[]) => prev.map(c =>
+                            c.id === activeChartId
+                                ? {
+                                    ...c,
+                                    comparisonSymbols: c.comparisonSymbols.map((s: any) => ({
+                                        ...s,
+                                        priceScaleId: targetScaleId
+                                    }))
+                                }
+                                : c
+                        ));
+                    }
+
+                    // Set scale mode to Indexed To 100 for proper merging
+                    handleScaleModeChange(SCALE_MODES.INDEXED_TO_100);
+                    logger.info(`All scales merged into: ${targetScaleId}`);
                 }}
                 onOpenSettings={onOpenSettings}
                 onClose={() => setPriceScaleContextMenu({ visible: false, x: 0, y: 0, priceScaleId: '' })}
@@ -5230,7 +5774,6 @@ const ChartComponent = forwardRef<any, ChartComponentProps>(({
                 }}
                 onToggleCursorLock={() => {
                     setIsVerticalCursorLocked(prev => !prev);
-                    // TODO: Implement actual crosshair lock functionality
                 }}
                 onOpenObjectTree={() => {
                     if (onOpenObjectTree) {
@@ -5259,41 +5802,96 @@ const ChartComponent = forwardRef<any, ChartComponentProps>(({
                 const riskCalcInd = indicators?.find(ind => ind.type === 'riskCalculator');
                 const shouldShow = riskCalcInd && riskCalcInd.visible !== false && (riskCalcInd.showPanel !== false);
 
-                if (!shouldShow || !riskCalculatorResults) return null;
+                if (!shouldShow || (!riskCalculatorResults && !draggedRiskResults)) return null;
 
                 // Get current LTP for "Use LTP" button
                 const currentLTP = dataRef.current.length > 0 ? dataRef.current[dataRef.current.length - 1]?.close : 0;
 
                 return (
-                    <RiskCalculatorPanel
-                        results={riskCalculatorResults}
-                        params={{
-                            capital: riskCalcInd.capital || 100000,
-                            riskPercent: riskCalcInd.riskPercent || 2,
-                            entryPrice: riskCalcInd.entryPrice || 0,
-                            stopLossPrice: riskCalcInd.stopLossPrice || 0,
-                            targetPrice: riskCalcInd.targetPrice || 0,
-                            riskRewardRatio: riskCalcInd.riskRewardRatio || 2,
-                            side: riskCalcInd.side || 'BUY',
-                            showTarget: riskCalcInd.showTarget !== false
-                        }}
-                        onClose={() => {
-                            // Toggle off the showPanel setting
-                            if (onIndicatorSettings && riskCalcInd.id) {
-                                onIndicatorSettings(riskCalcInd.id, { ...riskCalcInd, showPanel: false });
-                            }
-                        }}
-                        onUpdateSettings={(updates) => {
-                            // Update indicator settings when values change in panel
-                            if (onIndicatorSettings && riskCalcInd.id) {
-                                onIndicatorSettings(riskCalcInd.id, updates);
-                            }
-                        }}
-                        ltp={currentLTP}
-                        draggable={true}
-                    />
-                );
-            })()}
+                   <RiskCalculatorPanel
+                       results={draggedRiskResults || riskCalculatorResults}
+                       params={{
+                           capital: riskCalcInd.capital || 100000,
+                           riskPercent: riskCalcInd.riskPercent || 2,
+                           entryPrice: riskCalcInd.entryPrice || 0,
+                           stopLossPrice: riskCalcInd.stopLossPrice || 0,
+                           targetPrice: riskCalcInd.targetPrice || 0,
+                           riskRewardRatio: riskCalcInd.riskRewardRatio || 2,
+                           side: riskCalcInd.side || 'BUY',
+                           showTarget: riskCalcInd.showTarget !== false
+                       }}
+                       onClose={() => {
+                           // Toggle off the showPanel setting
+                           if (onIndicatorSettings && riskCalcInd.id) {
+                               onIndicatorSettings(riskCalcInd.id, { ...riskCalcInd, showPanel: false });
+                           }
+                       }}
+                       onUpdateSettings={(updates) => {
+                           // Update indicator settings when values change in panel
+                           if (onIndicatorSettings && riskCalcInd.id) {
+                               onIndicatorSettings(riskCalcInd.id, updates);
+
+                               // Persist for this symbol
+                               if (symbol) {
+                                   riskCalculatorStateService.saveState(symbol, updates);
+                               }
+                           }
+                       }}
+                       onPlacementModeToggle={(isActive) => setPlacementMode(isActive ? 'entry' : null)}
+                       placementMode={placementMode}
+                       ltp={currentLTP}
+                       draggable={true}
+                   />
+                );            })()}
+
+            {/* Institutional Volumetric Dashboard */}
+            {institutionalDashboard && (
+                <div 
+                    className={styles.institutionalDashboard}
+                    style={{
+                        position: 'absolute',
+                        top: '10px',
+                        right: '70px',
+                        zIndex: 100,
+                        backgroundColor: 'rgba(19, 23, 34, 0.9)',
+                        border: '1px solid #363c4e',
+                        borderRadius: '4px',
+                        padding: '12px',
+                        color: '#d1d4dc',
+                        fontSize: '12px',
+                        fontFamily: 'Trebuchet MS, Roboto, Ubuntu, sans-serif',
+                        pointerEvents: 'none',
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+                        minWidth: '180px'
+                    }}
+                >
+                    <div style={{ fontWeight: 'bold', marginBottom: '8px', color: '#2962ff', borderBottom: '1px solid #363c4e', paddingBottom: '4px' }}>
+                        INSTITUTIONAL PACE
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                        <span>Current Pace:</span>
+                        <span style={{ textAlign: 'right', fontWeight: 'bold' }}>{Math.round(institutionalDashboard.currentPace).toLocaleString()}</span>
+                        
+                        <span>Yesterday:</span>
+                        <span style={{ textAlign: 'right' }}>{Math.round(institutionalDashboard.yesterdayPace).toLocaleString()}</span>
+                        
+                        <span>RVOL Ratio:</span>
+                        <span style={{ textAlign: 'right', fontWeight: 'bold', color: institutionalDashboard.isHighPace ? '#089981' : '#f23645' }}>
+                            {institutionalDashboard.paceRatio.toFixed(2)}x
+                        </span>
+                        
+                        <span>VWAP Confluence:</span>
+                        <span style={{ textAlign: 'right', fontWeight: 'bold', color: institutionalDashboard.vwapStatus === 'Above' ? '#089981' : (institutionalDashboard.vwapStatus === 'Below' ? '#f23645' : '#d1d4dc') }}>
+                            {institutionalDashboard.vwapStatus}
+                        </span>
+
+                        <span>Order Flow Delta:</span>
+                        <span style={{ textAlign: 'right', fontWeight: 'bold', color: institutionalDashboard.deltaStatus === 'Strong Buy' ? '#089981' : (institutionalDashboard.deltaStatus === 'Strong Sell' ? '#f23645' : '#d1d4dc') }}>
+                            {institutionalDashboard.deltaStatus}
+                        </span>
+                    </div>
+                </div>
+            )}
 
         </div >
 

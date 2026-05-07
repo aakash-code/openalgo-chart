@@ -6,13 +6,17 @@
 import type {
   IChartApi,
   ISeriesApi,
-  ISeriesPrimitivePaneRenderer,
-  ISeriesPrimitivePaneView,
+  IPrimitivePaneRenderer,
+  IPrimitivePaneView,
   SeriesAttachedParameter,
   SeriesOptionsMap,
   Time,
-  BitmapCoordinatesRenderingScope,
 } from 'lightweight-charts';
+
+import { 
+  BitmapCoordinatesRenderingScope, 
+  CanvasRenderingTarget2D 
+} from 'fancy-canvas';
 
 // ==================== TYPES ====================
 
@@ -110,14 +114,14 @@ const formatNumber = (num: number | undefined | null, decimals: number = 2): str
 /**
  * Bar Stats Pane Renderer
  */
-class BarStatsPaneRenderer implements ISeriesPrimitivePaneRenderer {
+class BarStatsPaneRenderer implements IPrimitivePaneRenderer {
   private _source: BarStatsPrimitive;
 
   constructor(source: BarStatsPrimitive) {
     this._source = source;
   }
 
-  draw(target: { useBitmapCoordinateSpace: (cb: (scope: BitmapCoordinatesRenderingScope) => void) => void }): void {
+  draw(target: CanvasRenderingTarget2D): void {
     target.useBitmapCoordinateSpace((scope) => {
       const { context: ctx, bitmapSize, horizontalPixelRatio, verticalPixelRatio } = scope;
       const barStats = this._source._barStats;
@@ -261,7 +265,7 @@ class BarStatsPaneRenderer implements ISeriesPrimitivePaneRenderer {
 /**
  * Bar Stats Pane View
  */
-class BarStatsPaneView implements ISeriesPrimitivePaneView {
+class BarStatsPaneView implements IPrimitivePaneView {
   private _source: BarStatsPrimitive;
 
   constructor(source: BarStatsPrimitive) {
@@ -270,7 +274,7 @@ class BarStatsPaneView implements ISeriesPrimitivePaneView {
 
   update(): void {}
 
-  renderer(): ISeriesPrimitivePaneRenderer {
+  renderer(): IPrimitivePaneRenderer {
     return new BarStatsPaneRenderer(this._source);
   }
 
@@ -313,7 +317,7 @@ export class BarStatsPrimitive {
     this._requestUpdate = null;
   }
 
-  paneViews(): readonly ISeriesPrimitivePaneView[] {
+  paneViews(): readonly IPrimitivePaneView[] {
     return this._paneViews;
   }
 

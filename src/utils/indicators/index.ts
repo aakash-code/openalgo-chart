@@ -26,6 +26,7 @@ export { calculateSupertrend } from './supertrend';
 
 // Volume
 export { calculateVolume, calculateVolumeMA, calculateEnhancedVolume } from './volume';
+export { calculateCVD } from './cvd';
 export { calculateVWAP, calculateBuyVWAP, calculateSellVWAP, calculateAnchoredVWAP, calculateVWAPBands, calculateAllVWAPs } from './vwap';
 
 // Market Profile
@@ -39,6 +40,9 @@ export { calculatePriceActionRange, getLatestPriceActionRange } from './priceAct
 
 // Range Breakout Strategy (Opening Range 9:30-10:00)
 export { calculateRangeBreakout, getLatestRangeBreakout } from './rangeBreakout';
+
+// First Volumetric Candle Pair Zone
+export { calculateVolumetricCandlePair } from './volumetricCandlePair';
 
 // ANN Strategy (Artificial Neural Network)
 export { calculateANNStrategy, getLatestANNSignal } from './annStrategy';
@@ -84,9 +88,12 @@ export type {
     DetailedValidationResult
 } from './riskCalculator';
 
+export { riskCalculatorStateService } from './riskCalculatorStateService';
+
 // Risk Calculator Chart
 export {
     createRiskCalculatorPrimitive,
+    updateRiskCalculatorPrimitive,
     removeRiskCalculatorPrimitive,
     initRiskCalculatorPrimitiveRef,
     updateRiskCalculatorLines,
@@ -101,3 +108,11 @@ export type {
     PrimitiveRef,
     LinesRef
 } from './riskCalculatorChart';
+
+// Pattern Recognition
+export { calculatePatternRecognition } from './patternRecognition';
+export type { PatternRecognitionResult, PatternMarker, PatternRecognitionOptions } from './patternRecognition';
+
+// Institutional Volumetric
+export { calculateInstitutionalVolumetric } from './institutionalVolumetric';
+export type { InstitutionalVolumetricResult, InstitutionalVolumetricOptions } from './institutionalVolumetric';

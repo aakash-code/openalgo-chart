@@ -19,10 +19,11 @@ export class RiskCalculatorLines implements ISeriesPrimitive<Time> {
   private _entryPrice: number;
   private _stopLossPrice: number;
   private _targetPrice: number | null;
+  private _targets: { price: number; exitPercent: number }[] = [];
 
   // Interaction state
-  private _hoveredLine: 'entry' | 'stopLoss' | 'target' | null = null;
-  private _draggingLine: 'entry' | 'stopLoss' | 'target' | null = null;
+  private _hoveredLine: string | null = null;
+  private _draggingLine: string | null = null;
   private _dragPrices: Map<string, number> = new Map();
 
   // Configuration
@@ -43,6 +44,7 @@ export class RiskCalculatorLines implements ISeriesPrimitive<Time> {
     this._entryPrice = options.entryPrice;
     this._stopLossPrice = options.stopLossPrice;
     this._targetPrice = options.targetPrice;
+    this._targets = options.targets || [];
 
     this._paneViews = [new RiskCalculatorPaneView()];
 
@@ -52,6 +54,15 @@ export class RiskCalculatorLines implements ISeriesPrimitive<Time> {
     this._mouseUpHandler = this._onMouseUp.bind(this);
     this._crosshairMoveHandler = this._onCrosshairMove.bind(this);
     console.log('[RiskCalculator] Constructor complete, handlers bound');
+  }
+
+  applyOptions(options: Partial<RiskCalculatorOptions>): void {
+    this._options = { ...this._options, ...options };
+    if (options.entryPrice !== undefined) this._entryPrice = options.entryPrice;
+    if (options.stopLossPrice !== undefined) this._stopLossPrice = options.stopLossPrice;
+    if (options.targetPrice !== undefined) this._targetPrice = options.targetPrice;
+    if (options.targets !== undefined) this._targets = options.targets;
+    this.updateAllViews();
   }
 
   /**
@@ -155,10 +166,13 @@ export class RiskCalculatorLines implements ISeriesPrimitive<Time> {
     console.log('[RiskCalculator] detached() complete');
   }
 
-  updatePrices(entryPrice: number, stopLossPrice: number, targetPrice: number | null): void {
+  updatePrices(entryPrice: number, stopLossPrice: number, targetPrice: number | null, targets?: { price: number; exitPercent: number }[]): void {
     this._entryPrice = entryPrice;
     this._stopLossPrice = stopLossPrice;
     this._targetPrice = targetPrice;
+    if (targets) {
+      this._targets = targets;
+    }
     this.updateAllViews();
   }
 
@@ -168,9 +182,11 @@ export class RiskCalculatorLines implements ISeriesPrimitive<Time> {
         entryPrice: this._entryPrice,
         stopLossPrice: this._stopLossPrice,
         targetPrice: this._targetPrice,
+        targets: this._targets,
         entryY: null,
         stopLossY: null,
         targetY: null,
+        targetYs: [],
         hoveredLine: this._hoveredLine,
         draggingLine: this._draggingLine,
         dragPrices: this._dragPrices,
@@ -194,13 +210,17 @@ export class RiskCalculatorLines implements ISeriesPrimitive<Time> {
       ? this._series.priceToCoordinate(this._targetPrice)
       : null;
 
+    const targetYs = this._targets.map(t => this._series?.priceToCoordinate(t.price) || null);
+
     return {
       entryPrice: this._entryPrice,
       stopLossPrice: this._stopLossPrice,
       targetPrice: this._targetPrice,
+      targets: this._targets,
       entryY,
       stopLossY,
       targetY,
+      targetYs,
       hoveredLine: this._hoveredLine,
       draggingLine: this._draggingLine,
       dragPrices: this._dragPrices,
@@ -234,20 +254,27 @@ export class RiskCalculatorLines implements ISeriesPrimitive<Time> {
     const entryY = this._series.priceToCoordinate(this._entryPrice);
     const stopLossY = this._series.priceToCoordinate(this._stopLossPrice);
     const targetY = this._targetPrice !== null ? this._series.priceToCoordinate(this._targetPrice) : null;
+    const targetYs = this._targets.map(t => this._series?.priceToCoordinate(t.price) || null);
 
     const threshold = 8; // pixels
 
-    let newHoveredLine: 'entry' | 'stopLoss' | 'target' | null = null;
+    let newHoveredLine: string | null = null;
 
     if (entryY !== null && Math.abs(y - entryY) < threshold) {
       newHoveredLine = 'entry';
-      console.log('[RiskCalculator] Hovering over Entry line');
     } else if (stopLossY !== null && Math.abs(y - stopLossY) < threshold) {
       newHoveredLine = 'stopLoss';
-      console.log('[RiskCalculator] Hovering over Stop Loss line');
     } else if (targetY !== null && Math.abs(y - targetY) < threshold) {
       newHoveredLine = 'target';
-      console.log('[RiskCalculator] Hovering over Target line');
+    } else {
+      // Check multi-targets
+      for (let i = 0; i < targetYs.length; i++) {
+        const ty = targetYs[i];
+        if (ty !== null && Math.abs(y - ty) < threshold) {
+          newHoveredLine = `target-${i}`;
+          break;
+        }
+      }
     }
 
     // Update cursor - all three lines are now draggable
@@ -299,6 +326,12 @@ export class RiskCalculatorLines implements ISeriesPrimitive<Time> {
       this._dragPrices.set(this._draggingLine, price);
       chartElement.style.cursor = 'ns-resize';
       console.log('[RiskCalculator] Dragging to price:', price);
+      
+      // Trigger real-time drag callback if available
+      if (this._options.onPriceDrag) {
+        this._options.onPriceDrag(this._draggingLine, price);
+      }
+      
       this.updateAllViews();
     } else {
       chartElement.style.cursor = 'not-allowed';
@@ -348,31 +381,22 @@ export class RiskCalculatorLines implements ISeriesPrimitive<Time> {
     event.stopPropagation();
   }
 
-  private _isValidPrice(lineType: 'entry' | 'stopLoss' | 'target', newPrice: number): boolean {
-    const side = this._options.side;
+  private _isValidPrice(lineType: string, newPrice: number): boolean {
+    if (newPrice <= 0) return false;
 
     if (lineType === 'entry') {
-      // Entry must be between SL and target
-      if (side === 'BUY') {
-        const maxPrice = this._targetPrice !== null ? this._targetPrice : Infinity;
-        return newPrice > this._stopLossPrice && newPrice < maxPrice;
-      } else {
-        const minPrice = this._targetPrice !== null ? this._targetPrice : 0;
-        return newPrice < this._stopLossPrice && newPrice > minPrice;
-      }
+      // Entry just cannot be exactly equal to Stop Loss
+      return Math.abs(newPrice - this._stopLossPrice) > 0.0001;
     }
 
     if (lineType === 'stopLoss') {
-      // SL must be opposite side from entry
-      if (side === 'BUY') {
-        return newPrice < this._entryPrice;
-      } else {
-        return newPrice > this._entryPrice;
-      }
+      // Stop Loss just cannot be exactly equal to Entry
+      return Math.abs(newPrice - this._entryPrice) > 0.0001;
     }
 
-    if (lineType === 'target') {
+    if (lineType === 'target' || lineType.startsWith('target-')) {
       // Target must be on profit side of entry
+      const side = this._options.side;
       if (side === 'BUY') {
         return newPrice > this._entryPrice;
       } else {

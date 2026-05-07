@@ -98,12 +98,12 @@ export class RiskCalculatorFixture {
 
     if (isConnectionScreen) {
       // We're on the connection screen
-      // Try clicking "Login to OpenAlgo" button which should bypass API key
-      const loginButton = this.page.locator('button:has-text("Login to OpenAlgo")');
+      // Try clicking "Login to Dashboard" button which should bypass API key
+      const loginButton = this.page.locator('button:has-text("Login to Dashboard")');
       const isLoginVisible = await loginButton.isVisible().catch(() => false);
 
       if (isLoginVisible) {
-        // Click the Login to OpenAlgo button
+        // Click the Login to Dashboard button
         await loginButton.click();
 
         // Wait for potential redirect or chart loading
@@ -112,7 +112,8 @@ export class RiskCalculatorFixture {
         // If no login button, try using localStorage to bypass auth
         // This is a workaround for E2E testing
         await this.page.evaluate(() => {
-          localStorage.setItem('openalgo_demo_mode', 'true');
+          localStorage.setItem('oa_apikey', '8319156e5247816c4b8974d5e687fe24156e7f1a8c68fecba62be4fc1ba128ea');
+          localStorage.setItem('oa_host_url', 'http://127.0.0.1:8000');
         });
         await this.page.reload();
         await this.page.waitForTimeout(2000);

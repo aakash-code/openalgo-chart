@@ -1,17 +1,21 @@
-import React, { useCallback, useRef } from 'react';
+import React, { useCallback, useRef, useState, useEffect } from 'react';
 import type { DragEvent, MouseEvent } from 'react';
 import { X, GripVertical } from 'lucide-react';
 import styles from './WatchlistItem.module.css';
 import classNames from 'classnames';
+import type { WatchlistItemData } from '../../types/watchlist';
 
-interface WatchlistItemData {
-    symbol: string;
-    exchange: string;
-    last: string | number;
-    chg: string | number;
-    chgP: string | number;
-    up: boolean;
-}
+const getFlagColor = (flag?: string): string => {
+    switch (flag?.toLowerCase()) {
+        case 'red': return '#ff5252';
+        case 'green': return '#4caf50';
+        case 'blue': return '#2196f3';
+        case 'yellow': return '#ffeb3b';
+        case 'orange': return '#ff9800';
+        case 'purple': return '#9c27b0';
+        default: return 'transparent';
+    }
+};
 
 interface SymbolData {
     symbol: string;
@@ -49,15 +53,7 @@ export interface WatchlistItemProps {
 
 /**
  * WatchlistItem - Individual symbol row in the watchlist
- *
- * Features:
- * - Smart tooltip integration (hover shows full name after delay)
- * - Drag handle for reordering
- * - Delete button appears on hover
- * - Exchange flag icon
- * - Right-click context menu support
  */
-
 const WatchlistItem: React.FC<WatchlistItemProps> = ({
     item,
     isActive,
@@ -80,6 +76,24 @@ const WatchlistItem: React.FC<WatchlistItemProps> = ({
     onMouseMove,
 }) => {
     const itemRef = useRef<HTMLDivElement>(null);
+    const [isVisible, setIsVisible] = useState(false);
+
+    // VIRTUAL WATCHLIST OPTIMIZATION: Only render full row when visible
+    useEffect(() => {
+        const observer = new IntersectionObserver(
+            ([entry]) => setIsVisible(entry.isIntersecting),
+            { threshold: 0.01, rootMargin: '200px' } 
+        );
+        if (itemRef.current) observer.observe(itemRef.current);
+        return () => observer.disconnect();
+    }, []);
+
+    // Scroll into view when focused
+    useEffect(() => {
+        if (isFocused && itemRef.current) {
+            itemRef.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+    }, [isFocused]);
 
     const handleClick = useCallback((): void => {
         onSelect({ symbol: item.symbol, exchange: item.exchange });
@@ -122,6 +136,12 @@ const WatchlistItem: React.FC<WatchlistItemProps> = ({
         }
     }, [onMouseMove]);
 
+    // If item is off-screen, render a lightweight spacer to maintain scroll position
+    // BUT always render the active item or focused item for accessibility
+    if (!isVisible && !isActive && !isFocused && !isDragging) {
+        return <div ref={itemRef} className={styles.item} style={{ height: '33px', opacity: 0 }} />;
+    }
+
     return (
         <div
             ref={itemRef}
@@ -152,6 +172,12 @@ const WatchlistItem: React.FC<WatchlistItemProps> = ({
                 className={styles.symbolName}
                 style={{ width: columnWidths.symbol, minWidth: columnWidths.symbol }}
             >
+                {item.flag && (
+                    <span 
+                        className={styles.flag} 
+                        style={{ backgroundColor: getFlagColor(item.flag) }}
+                    />
+                )}
                 {item.symbol}
             </span>
 
@@ -200,4 +226,15 @@ const WatchlistItem: React.FC<WatchlistItemProps> = ({
     );
 };
 
-export default React.memo(WatchlistItem);
+// Optimized memoization: Only re-render if essential props change
+export default React.memo(WatchlistItem, (prev, next) => {
+    return (
+        prev.isActive === next.isActive &&
+        prev.isFocused === next.isFocused &&
+        prev.isDragging === next.isDragging &&
+        prev.item.last === next.item.last &&
+        prev.item.chg === next.item.chg &&
+        prev.item.flag === next.item.flag &&
+        prev.columnWidths === next.columnWidths
+    );
+});

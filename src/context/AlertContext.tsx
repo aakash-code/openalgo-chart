@@ -8,6 +8,7 @@ import {
   useState,
   useContext,
   useCallback,
+  useMemo,
   useEffect,
   useRef,
   type ReactNode,
@@ -102,8 +103,8 @@ export interface AlertContextValue {
 
 const AlertContext = createContext<AlertContextValue | null>(null);
 
-/** Alert retention period (24 hours) */
-const ALERT_RETENTION_MS = 24 * 60 * 60 * 1000;
+/** Alert retention period (48 hours) */
+const ALERT_RETENTION_MS = 48 * 60 * 60 * 1000;
 
 export interface AlertProviderProps {
   children: ReactNode;
@@ -258,7 +259,7 @@ export function AlertProvider({ children }: AlertProviderProps) {
     [alerts]
   );
 
-  const value: AlertContextValue = {
+  const value: AlertContextValue = useMemo(() => ({
     // Alert price
     alertPrice,
     setAlertPrice,
@@ -299,10 +300,31 @@ export function AlertProvider({ children }: AlertProviderProps) {
 
     // Constants
     ALERT_RETENTION_MS,
-  };
+  }), [
+    alertPrice,
+    alerts,
+    alertLogs,
+    unreadAlertCount,
+    globalAlertPopups,
+    addAlert,
+    removeAlert,
+    updateAlert,
+    triggerAlert,
+    getActiveAlerts,
+    getTriggeredAlerts,
+    getAlertsForSymbol,
+    addAlertLog,
+    clearAlertLogs,
+    markAllAlertsRead,
+    incrementUnreadCount,
+    addGlobalPopup,
+    removeGlobalPopup,
+    clearGlobalPopups
+  ]);
 
   return <AlertContext.Provider value={value}>{children}</AlertContext.Provider>;
 }
+
 
 /**
  * Hook to access alert context

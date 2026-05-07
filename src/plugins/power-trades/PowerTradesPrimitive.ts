@@ -7,14 +7,18 @@
 import type {
     IChartApi,
     ISeriesApi,
-    ISeriesPrimitivePaneRenderer,
-    ISeriesPrimitivePaneView,
+    IPrimitivePaneRenderer,
+    IPrimitivePaneView,
     ITimeScaleApi,
     SeriesAttachedParameter,
     SeriesOptionsMap,
     Time,
-    BitmapCoordinatesRenderingScope,
 } from 'lightweight-charts';
+
+import {
+    BitmapCoordinatesRenderingScope,
+    CanvasRenderingTarget2D,
+} from 'fancy-canvas';
 
 import {
     COLORS,
@@ -53,14 +57,14 @@ interface BufferedTick extends Tick {
 /**
  * Power Trades Pane Renderer
  */
-class PowerTradesPaneRenderer implements ISeriesPrimitivePaneRenderer {
+class PowerTradesPaneRenderer implements IPrimitivePaneRenderer {
     private _source: PowerTradesPrimitive;
 
     constructor(source: PowerTradesPrimitive) {
         this._source = source;
     }
 
-    draw(target: { useBitmapCoordinateSpace: (cb: (scope: BitmapCoordinatesRenderingScope) => void) => void }): void {
+    draw(target: CanvasRenderingTarget2D): void {
         target.useBitmapCoordinateSpace((scope) => {
             const { context: ctx, bitmapSize, horizontalPixelRatio, verticalPixelRatio } = scope;
             const powerTrades = this._source._powerTrades;
@@ -257,14 +261,14 @@ class PowerTradesPaneRenderer implements ISeriesPrimitivePaneRenderer {
  * Power Trades Price Line Renderer
  * Draws horizontal lines at power trade price levels
  */
-class PowerTradesPriceLineRenderer implements ISeriesPrimitivePaneRenderer {
+class PowerTradesPriceLineRenderer implements IPrimitivePaneRenderer {
     private _source: PowerTradesPrimitive;
 
     constructor(source: PowerTradesPrimitive) {
         this._source = source;
     }
 
-    draw(target: { useBitmapCoordinateSpace: (cb: (scope: BitmapCoordinatesRenderingScope) => void) => void }): void {
+    draw(target: CanvasRenderingTarget2D): void {
         target.useBitmapCoordinateSpace((scope) => {
             const { context: ctx, bitmapSize, horizontalPixelRatio, verticalPixelRatio } = scope;
             const powerTrades = this._source._powerTrades;
@@ -308,7 +312,7 @@ class PowerTradesPriceLineRenderer implements ISeriesPrimitivePaneRenderer {
 /**
  * Power Trades Pane View
  */
-class PowerTradesPaneView implements ISeriesPrimitivePaneView {
+class PowerTradesPaneView implements IPrimitivePaneView {
     private _source: PowerTradesPrimitive;
 
     constructor(source: PowerTradesPrimitive) {
@@ -317,7 +321,7 @@ class PowerTradesPaneView implements ISeriesPrimitivePaneView {
 
     update(): void {}
 
-    renderer(): ISeriesPrimitivePaneRenderer {
+    renderer(): IPrimitivePaneRenderer {
         return new PowerTradesPaneRenderer(this._source);
     }
 
@@ -329,7 +333,7 @@ class PowerTradesPaneView implements ISeriesPrimitivePaneView {
 /**
  * Power Trades Price Line View
  */
-class PowerTradesPriceLineView implements ISeriesPrimitivePaneView {
+class PowerTradesPriceLineView implements IPrimitivePaneView {
     private _source: PowerTradesPrimitive;
 
     constructor(source: PowerTradesPrimitive) {
@@ -338,7 +342,7 @@ class PowerTradesPriceLineView implements ISeriesPrimitivePaneView {
 
     update(): void {}
 
-    renderer(): ISeriesPrimitivePaneRenderer {
+    renderer(): IPrimitivePaneRenderer {
         return new PowerTradesPriceLineRenderer(this._source);
     }
 
@@ -391,7 +395,7 @@ export class PowerTradesPrimitive {
         this._requestUpdate = null;
     }
 
-    paneViews(): readonly ISeriesPrimitivePaneView[] {
+    paneViews(): readonly IPrimitivePaneView[] {
         return this._paneViews;
     }
 

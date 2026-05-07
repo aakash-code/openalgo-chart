@@ -4,6 +4,11 @@
  */
 
 import { useCallback, type Dispatch, type SetStateAction } from 'react';
+import type {
+  WatchlistSymbol,
+  WatchlistsState,
+  SearchMode,
+} from '../types/watchlist';
 
 // ==================== TYPES ====================
 
@@ -45,34 +50,23 @@ export interface ChartConfig {
   [key: string]: unknown;
 }
 
-/** Watchlist symbol (can be string for legacy or object) */
-export type WatchlistSymbol = string | { symbol: string; exchange: string };
-
-/** Watchlist item */
-export interface Watchlist {
-  id: string;
-  name: string;
-  symbols: WatchlistSymbol[];
-}
-
-/** Watchlists state */
-export interface WatchlistsState {
-  lists: Watchlist[];
-  activeListId: string;
-}
-
-/** Search mode types */
-export type SearchMode = 'switch' | 'compare' | 'add';
-
 /** Hook parameters */
 export interface UseSymbolHandlersParams {
   searchMode: SearchMode;
   setCharts: Dispatch<SetStateAction<ChartConfig[]>>;
   activeChartId: number;
-  watchlistSymbols: WatchlistSymbol[];
+  watchlistSymbols: (WatchlistSymbol | string)[];
   setWatchlistsState: Dispatch<SetStateAction<WatchlistsState>>;
   setIsSearchOpen: Dispatch<SetStateAction<boolean>>;
   setSearchMode: Dispatch<SetStateAction<SearchMode>>;
+  // Sync state
+  isSyncEnabled?: boolean;
+  syncOptions?: {
+    symbol: boolean;
+    interval: boolean;
+    crosshair: boolean;
+    time: boolean;
+  };
 }
 
 /** Hook return type */
@@ -99,6 +93,8 @@ export const useSymbolHandlers = ({
   setWatchlistsState,
   setIsSearchOpen,
   setSearchMode,
+  isSyncEnabled = false,
+  syncOptions = { symbol: false, interval: false, crosshair: false, time: false },
 }: UseSymbolHandlersParams): UseSymbolHandlersReturn => {
   // Handle symbol selection based on search mode
   const handleSymbolChange = useCallback(
@@ -112,12 +108,21 @@ export const useSymbolHandlers = ({
           : COMPARE_SCALE_MODES.SAME_PERCENT;
 
       if (searchMode === 'switch') {
+        console.log('[useSymbolHandlers] Switching symbol for activeChartId:', activeChartId, 'Sync:', isSyncEnabled);
         setCharts((prev) =>
-          prev.map((chart) =>
-            chart.id === activeChartId
+          prev.map((chart) => {
+            const shouldUpdate = 
+                chart.id === activeChartId || // Active chart always updates
+                (isSyncEnabled && syncOptions.symbol); // Other charts update only if sync is on
+
+            if (shouldUpdate) {
+                console.log('[useSymbolHandlers] Updating chart:', chart.id, 'with symbol:', symbol);
+            }
+            
+            return shouldUpdate
               ? { ...chart, symbol: symbol, exchange: exchange, strategyConfig: null }
-              : chart
-          )
+              : chart;
+          })
         );
       } else if (searchMode === 'compare') {
         setCharts((prev) =>
@@ -174,7 +179,7 @@ export const useSymbolHandlers = ({
         setIsSearchOpen(false);
       }
     },
-    [searchMode, setCharts, activeChartId, watchlistSymbols, setWatchlistsState, setIsSearchOpen]
+    [searchMode, setCharts, activeChartId, watchlistSymbols, setWatchlistsState, setIsSearchOpen, isSyncEnabled, syncOptions]
   );
 
   // Remove symbol from watchlist
