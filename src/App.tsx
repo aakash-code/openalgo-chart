@@ -11,6 +11,11 @@ import SnapshotToast from './components/Toast/SnapshotToast';
 // html2canvas is lazy loaded in useToolHandlers.ts when screenshot is taken
 import { getTickerPrice, subscribeToMultiTicker, checkAuth, closeAllWebSockets, forceCloseAllWebSockets, saveUserPreferences, modifyOrder, cancelOrder, getKlines } from './services/openalgo';
 import { globalAlertMonitor } from './services/globalAlertMonitor';
+import { vcpBreakoutMonitor, type VCPNotificationEvent } from './services/vcpBreakoutMonitor';
+import { multiVariantEngine } from './services/multiVariantEngine';
+import AnalyzerStatusBadge from './components/AutoTrade/AnalyzerStatusBadge';
+import AutoTradeStatusBadge from './components/AutoTrade/AutoTradeStatusBadge';
+const StrategyTestPanel = lazy(() => import('./components/StrategyTestPanel/StrategyTestPanel'));
 
 import BottomBar from './components/BottomBar/BottomBar';
 import ChartGrid from './components/Chart/ChartGrid';
@@ -72,7 +77,9 @@ const MarketScreenerPanel = lazy(() => import('./components/MarketScreener/Marke
 const SectorHeatmapModal = lazy(() => import('./components/SectorHeatmap/SectorHeatmapModal'));
 const DepthOfMarket = lazy(() => import('./components/DepthOfMarket/DepthOfMarket'));
 const ANNScanner = lazy(() => import('./components/ANNScanner/ANNScanner'));
+const VCPScanner = lazy(() => import('./components/VCPScanner/VCPScanner'));
 const TradefinderScanner = lazy(() => import('./components/TradefinderScanner/TradefinderScanner'));
+const BreakoutScanner = lazy(() => import('./components/BreakoutScanner'));
 const ChartTemplatesDialog = lazy(() => import('./components/ChartTemplates/ChartTemplatesDialog'));
 const ShortcutsSettings = lazy(() => import('./components/ShortcutsSettings/ShortcutsSettings'));
 const IndicatorSettingsDialog = lazy(() => import('./components/IndicatorSettings/IndicatorSettingsDialog'));
@@ -326,6 +333,98 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
     };
   }, [isAuthenticated, showToast]);
 
+  // === VCPBreakoutMonitor ===
+  // Background scanner that re-evaluates the VCP indicator on the 3-minute
+  // timeframe for every watchlist symbol on each bar close, and fires
+  // notifications when a Long Breakout / Short Breakdown signal is detected.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    // Best-effort browser notification permission request
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      if (Notification.permission === 'default') {
+        Notification.requestPermission().catch(() => {
+          // Ignore — user can still see toast/popup/sound
+        });
+      }
+    }
+
+    const handleVCPNotification = (evt: VCPNotificationEvent) => {
+      const isLong = evt.direction === 'long';
+      const arrow = isLong ? '↑' : '↓';
+      const headline = isLong ? 'Long Breakout' : 'Short Breakdown';
+      const msg = `${evt.symbol} ${arrow} ${headline}`;
+
+      // 1. Toast
+      showToast(msg, isLong ? 'success' : 'warning');
+
+      // 2. Stacked popup overlay (auto-dismiss 60s)
+      setGlobalAlertPopups(prev => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          symbol: evt.symbol,
+          exchange: evt.exchange,
+          alertType: 'vcp',
+          message: `${evt.signalText} • Zone ${evt.zoneLow.toFixed(2)} – ${evt.zoneHigh.toFixed(2)}`,
+          timestamp: evt.timestamp,
+        } as any,
+      ]);
+
+      // 3. Sound
+      try {
+        const audio = new Audio('/sounds/alert.mp3');
+        audio.volume = 0.5;
+        audio.play().catch(() => { /* autoplay blocked */ });
+      } catch {
+        // ignore
+      }
+
+      // 4. Browser notification
+      if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+        try {
+          new Notification('VCP Signal', {
+            body: `${evt.symbol}: ${evt.signalText}\nZone ${evt.zoneLow.toFixed(2)} – ${evt.zoneHigh.toFixed(2)}`,
+            icon: '/favicon.ico',
+            tag: `vcp-${evt.symbol}-${evt.direction}`,
+          });
+        } catch {
+          // ignore
+        }
+      }
+
+      // 5. Append to alert log so it's visible in the unread tray
+      setAlertLogs(prev => {
+        const newLog = {
+          id: crypto.randomUUID(),
+          time: new Date().toISOString(),
+          message: `${msg} (${evt.signalText})`,
+          symbol: evt.symbol,
+          price: isLong ? evt.zoneHigh : evt.zoneLow,
+          type: 'vcp',
+        } as any;
+        const updated = [newLog, ...prev].slice(0, 100);
+        localStorage.setItem('tv_alert_logs', JSON.stringify(updated));
+        return updated;
+      });
+      setUnreadAlertCount(c => c + 1);
+    };
+
+    // Small delay so other services are ready
+    const timer = setTimeout(() => {
+      vcpBreakoutMonitor.start(handleVCPNotification);
+      // Auto-trade engine starts AFTER the VCP scanner so it can subscribe to results
+      multiVariantEngine.start();
+    }, 1500);
+
+    return () => {
+      clearTimeout(timer);
+      multiVariantEngine.stop();
+      vcpBreakoutMonitor.stop();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated, showToast]);
+
   // Handler to share OHLC data with GlobalAlertMonitor for indicator alerts
   const handleOHLCDataUpdate = useCallback((symbol, exchange, interval, ohlcData) => {
     if (symbol && exchange && interval && ohlcData && Array.isArray(ohlcData) && ohlcData.length > 0) {
@@ -337,6 +436,8 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
   const isMobile = useIsMobile();
   const [mobileTab, setMobileTab] = useState<'chart' | 'watchlist' | 'alerts' | 'tools' | 'settings'>('chart');
   const [isWatchlistVisible, setIsWatchlistVisible] = useState(false);
+  // Declared early because handleMobileTabChange (below) references it before the main tool-state block
+  const [showDrawingToolbar, setShowDrawingToolbar] = useState(true);
 
   // Handle mobile tab changes
   const handleMobileTabChange = useCallback((tab) => {
@@ -823,10 +924,10 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
     setUnreadAlertCount
   });
 
-  // Tool-related state - moved early for use in useToolHandlers
+  // Tool-related state
   const [activeTool, setActiveTool] = useState(null);
   const [isMagnetMode, setIsMagnetMode] = useState(false);
-  const [showDrawingToolbar, setShowDrawingToolbar] = useState(true);
+  // showDrawingToolbar is declared earlier (before handleMobileTabChange) to avoid TDZ access
   const [isReplayMode, setIsReplayMode] = useState(false);
   const [isDrawingsLocked, setIsDrawingsLocked] = useState(false);
   const [isDrawingsHidden, setIsDrawingsHidden] = useState(false);
@@ -951,6 +1052,18 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
   // PERF FIX: Keep watchlistSymbolsRef in sync with watchlistSymbols
   useEffect(() => {
     watchlistSymbolsRef.current = watchlistSymbols;
+  }, [watchlistSymbols]);
+
+  // Push the current watchlist into the VCP breakout monitor whenever it changes
+  useEffect(() => {
+    const normalized = (watchlistSymbols as any[])
+      .filter((s: any) => !(typeof s === 'string' && s.startsWith('###')))
+      .map((s: any) =>
+        typeof s === 'string'
+          ? { symbol: s, exchange: 'NSE' }
+          : { symbol: s.symbol, exchange: s.exchange || 'NSE' }
+      );
+    vcpBreakoutMonitor.setWatchlist(normalized);
   }, [watchlistSymbols]);
 
   // PERF: Batched watchlist update refs - accumulates WS ticks and flushes at 60fps
@@ -1156,6 +1269,11 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
                 showToast(`Removed invalid symbol: ${symbol}`, 'warning');
               }
             }, 0);
+            return null;
+          }
+
+          // Backend is down — no point retrying, return silently
+          if (error.message && (error.message.includes('503') || error.message.includes('Backend unavailable') || error.message.includes('ECONNREFUSED'))) {
             return null;
           }
 
@@ -1405,6 +1523,7 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
     }
     // If no changes (just reorder or sections), do nothing
 
+    const pendingUpdatesMap = pendingWatchlistUpdatesRef.current;
     return () => {
       // Always cleanup previous effect - new effect will start fresh
       mounted = false;
@@ -1414,7 +1533,7 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
       if (watchlistRafRef.current) {
         cancelAnimationFrame(watchlistRafRef.current);
         watchlistRafRef.current = 0;
-        pendingWatchlistUpdatesRef.current.clear();
+        pendingUpdatesMap.clear();
       }
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.close();
@@ -1523,7 +1642,7 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
     }));
   }, [activeChartId]);
 
-  const toggleIndicator = (name: any) => {
+  const toggleIndicator = useCallback((name: any) => {
     setCharts((prev: any[]) => prev.map((chart: any) => {
       if (chart.id !== activeChartId) return chart;
 
@@ -1542,7 +1661,7 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
 
       return chart;
     }));
-  };
+  }, [activeChartId]);
 
   // Indicator handlers are now provided by useIndicatorHandlers hook
 
@@ -1934,6 +2053,15 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
             onHeatmapClick={handleHeatmapClick}
             onPineEditorClick={handleTogglePineEditor}
             isPineEditorOpen={showPineEditor}
+            rightSlot={
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <AnalyzerStatusBadge
+                  isAuthenticated={isAuthenticated}
+                  showToast={showToast}
+                />
+                {isAuthenticated && <AutoTradeStatusBadge showToast={showToast} />}
+              </div>
+            }
           />
         }
         leftToolbar={
@@ -2128,6 +2256,31 @@ function AppContent({ isAuthenticated, setIsAuthenticated }) {
                 onStartScan={startAnnScan}
                 onCancelScan={cancelAnnScan}
               />
+            </Suspense>
+          ) : activeRightPanel === 'vcp_scanner' ? (
+            <Suspense fallback={<div style={{ padding: 20 }}>Loading VCP Scanner...</div>}>
+              <VCPScanner
+                onSymbolSelect={handleSymbolNavigation}
+                isAuthenticated={isAuthenticated}
+              />
+            </Suspense>
+          ) : activeRightPanel === 'breakout_scanner' ? (
+            <Suspense fallback={<div style={{ padding: 20 }}>Loading Breakout Scanner...</div>}>
+              <BreakoutScanner
+                watchlistSymbols={(watchlistSymbols as any[])
+                  .filter((s: any) => !(typeof s === 'string' && s.startsWith('###')))
+                  .map((s: any) => typeof s === 'string'
+                    ? { symbol: s, exchange: 'NSE' }
+                    : { symbol: s.symbol, exchange: s.exchange || 'NSE' }
+                  )}
+                onSymbolSelect={handleSymbolNavigation}
+                isAuthenticated={isAuthenticated}
+                showToast={showToast}
+              />
+            </Suspense>
+          ) : activeRightPanel === 'strategy_test' ? (
+            <Suspense fallback={<div style={{ padding: 20 }}>Loading Strategy Test...</div>}>
+              <StrategyTestPanel />
             </Suspense>
           ) : activeRightPanel === 'tradefinder' ? (
             <Suspense fallback={<div style={{ padding: 20 }}>Loading Tradefinder...</div>}>

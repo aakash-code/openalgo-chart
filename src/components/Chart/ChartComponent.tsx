@@ -68,7 +68,7 @@ import { getChartTheme, getThemeType } from '../../utils/chartTheme';
 import { TOOL_MAP, hexToRgba, areSymbolsEquivalent, addFutureWhitespacePoints, formatTimeDiff } from './utils/chartHelpers';
 import { createSeries, transformData } from './utils/seriesFactories';
 import { createIndicatorSeries } from './utils/indicatorCreators';
-import { updateIndicatorSeries } from './utils/indicatorUpdaters';
+import { updateIndicatorSeries, setCVDLowerTFData } from './utils/indicatorUpdaters';
 import { VerticalLine } from '../../plugins/line-tools/tools/vertical-line';
 import { cleanupIndicators } from './utils/indicatorCleanup';
 import {
@@ -473,6 +473,11 @@ const ChartComponent = forwardRef<any, ChartComponentProps>(({
     const wsRef = useRef(null);
     const chartTypeRef = useRef(chartType);
     const dataRef = useRef([]);
+    // Cache for 1-min lower-timeframe data used by CVD wicks
+    const cvdLTFDataRef = useRef<{ key: string; data: any[] }>({ key: '', data: [] });
+    const cvdLTFFetchingRef = useRef(false);
+    // Ref to latest updateIndicators so async LTF fetch can re-trigger CVD recalculation
+    const updateIndicatorsRef = useRef<((data: any, indicators: any) => void) | null>(null);
     const comparisonSeriesRefs = useRef(new Map());
     const comparisonPanesRef = useRef(new Map()); // Track panes for 'newPane' comparison mode
     const visualTradingRef = useRef(null);
@@ -560,12 +565,35 @@ const ChartComponent = forwardRef<any, ChartComponentProps>(({
     const strategyConfigRef = useRef(strategyConfig);
 
     // Keep refs in sync with props
-    useEffect(() => { symbolRef.current = symbol; }, [symbol]);
-    useEffect(() => { exchangeRef.current = exchange; }, [exchange]);
+    useEffect(() => { symbolRef.current = symbol; cvdLTFDataRef.current = { key: '', data: [] }; }, [symbol]);
+    useEffect(() => { exchangeRef.current = exchange; cvdLTFDataRef.current = { key: '', data: [] }; }, [exchange]);
     useEffect(() => { intervalRef.current = interval; }, [interval]);
     useEffect(() => { indicatorsRef.current = indicators; }, [indicators]);
     useEffect(() => { isSessionBreakVisibleRef.current = isSessionBreakVisible; }, [isSessionBreakVisible]);
     useEffect(() => { strategyConfigRef.current = strategyConfig; }, [strategyConfig]);
+
+    // Fetch 1-min data for CVD wicks when CVD indicator is active
+    useEffect(() => {
+        const hasCVD = Array.isArray(indicators) && indicators.some(ind => ind.type === 'cvd' && ind.visible !== false);
+        if (!hasCVD || !symbol || !exchange) {
+            setCVDLowerTFData(null, intervalToSeconds(interval || '3'));
+            return;
+        }
+        const cacheKey = `${symbol}:${exchange}`;
+        if (cvdLTFDataRef.current.key === cacheKey || cvdLTFFetchingRef.current) return;
+
+        cvdLTFFetchingRef.current = true;
+        getKlines(symbol, exchange, '1', 1500).then(data => {
+            cvdLTFDataRef.current = { key: cacheKey, data };
+            setCVDLowerTFData(data as any[], intervalToSeconds(interval || '3'));
+            // Re-trigger CVD calculation now that 1-min LTF data is available
+            updateIndicatorsRef.current?.(dataRef.current, indicatorsRef.current);
+        }).catch(() => {
+            setCVDLowerTFData(null, intervalToSeconds(interval || '3'));
+        }).finally(() => {
+            cvdLTFFetchingRef.current = false;
+        });
+    }, [symbol, exchange, interval, indicators]);
 
     // Track previous symbol for alert persistence
     const prevSymbolRef = useRef({ symbol: null, exchange: null });
@@ -3071,19 +3099,19 @@ const ChartComponent = forwardRef<any, ChartComponentProps>(({
                 switch (ind.type) {
                     case 'sma': {
                         const period = ind.period || 20;
-                        // Optimization: only calc last point if possible? 
+                        // Optimization: only calc last point if possible?
                         // Existing logic calculated full if < period, else update.
-                        // But calculateSMA returns full array. 
+                        // But calculateSMA returns full array.
                         // To be efficient, we need to know the previous value or calculate full.
                         // For now, let's just calculate full. It's fast enough for < 5000 points.
-                        // Optimizing: 
+                        // Optimizing:
                         // If data length is huge, we should optimize.
                         // But existing logic did: if data.length < period ... else update.
                         // To update SMA properly we need full history or streaming calc.
                         // calculateSMA provides streaming? No.
                         // Let's stick to full calc for robustness or simple last point optimization if feasible.
 
-                        // Simple approach: Calculate full dataset for the *last few bars*? 
+                        // Simple approach: Calculate full dataset for the *last few bars*?
                         // No, SMA needs history.
                         // Let's rely on standard calculation.
                         const val = calculateSMA(data, period);
@@ -3996,6 +4024,9 @@ const ChartComponent = forwardRef<any, ChartComponentProps>(({
         }
 
     }, []);
+
+    // Keep updateIndicatorsRef in sync so async callbacks can trigger recalculation
+    useEffect(() => { updateIndicatorsRef.current = updateIndicators; });
 
     // --- VISUAL TRADING DATA SYNC ---
     useEffect(() => {

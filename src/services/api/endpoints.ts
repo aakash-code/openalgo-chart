@@ -44,6 +44,12 @@ export const OPTIONS_ENDPOINTS = {
   OPTION_SYMBOLS: '/optionsymbols',
 } as const;
 
+/** Analyzer (sandbox) endpoints */
+export const ANALYZER_ENDPOINTS = {
+  TOGGLE: '/analyzertoggle',
+  STATUS: '/analyzerstatus',
+} as const;
+
 /** All endpoints combined */
 export const API_ENDPOINTS = {
   ...ACCOUNT_ENDPOINTS,
@@ -51,6 +57,7 @@ export const API_ENDPOINTS = {
   ...MARKET_ENDPOINTS,
   ...INSTRUMENT_ENDPOINTS,
   ...OPTIONS_ENDPOINTS,
+  ...ANALYZER_ENDPOINTS,
 } as const;
 
 /** Endpoint type */

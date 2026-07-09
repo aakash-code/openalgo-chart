@@ -1,0 +1,73 @@
+.badgeOff,
+.badgeTesting,
+.badgeLive,
+.badgeMismatch {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  user-select: none;
+  border: 1px solid transparent;
+  transition: filter 0.15s ease, box-shadow 0.15s ease;
+}
+
+.badgeMismatch {
+  background: rgba(239, 68, 68, 0.18);
+  color: #fff;
+  border-color: rgba(239, 68, 68, 0.7);
+  animation: badgePulse 1.4s ease-in-out infinite;
+}
+.badgeMismatch:hover {
+  filter: brightness(1.15);
+}
+
+@keyframes badgePulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.55);
+    background: rgba(239, 68, 68, 0.18);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(239, 68, 68, 0);
+    background: rgba(239, 68, 68, 0.4);
+  }
+}
+
+.badgeOff {
+  background: rgba(110, 118, 129, 0.15);
+  color: #8b949e;
+  border-color: rgba(110, 118, 129, 0.4);
+}
+.badgeTesting {
+  background: rgba(88, 166, 255, 0.12);
+  color: #58a6ff;
+  border-color: rgba(88, 166, 255, 0.45);
+}
+.badgeLive {
+  background: rgba(38, 166, 154, 0.14);
+  color: #26a69a;
+  border-color: rgba(38, 166, 154, 0.5);
+}
+
+.badgeOff:hover,
+.badgeTesting:hover,
+.badgeLive:hover {
+  filter: brightness(1.15);
+}
+
+.counts {
+  margin-left: 2px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.18);
+  font-size: 9px;
+}
+
+.settingsIcon {
+  margin-left: 2px;
+  opacity: 0.6;
+}

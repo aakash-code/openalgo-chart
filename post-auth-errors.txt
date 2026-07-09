@@ -1,0 +1,27 @@
+Total messages: 198 (Errors: 16, Warnings: 2)
+Returning 16 messages for level "error"
+
+[ERROR] Failed to load resource: the server responded with a status of 500 (INTERNAL SERVER ERROR) @ http://localhost:5001/api/v1/quotes:0
+[ERROR] [ChartData] Error fetching ticker price: Error: [Errno 35] Resource temporarily unavailable
+    at getTickerPrice (http://localhost:5001/src/services/chartDataService.ts:224:13)
+    at async fetchSymbol (http://localhost:5001/src/App.tsx?t=1778485465774:658:24)
+    at async Promise.allSettled (index 166)
+    at async hydrateWatchlist (http://localhost:5001/src/App.tsx?t=1778485465774:723:25) @ http://localhost:5001/src/utils/logger.ts:75
+[ERROR] Failed to load resource: the server responded with a status of 500 (INTERNAL SERVER ERROR) @ http://localhost:5001/api/v1/quotes:0
+[ERROR] [ChartData] Error fetching ticker price: Error: [Errno 35] Resource temporarily unavailable
+    at getTickerPrice (http://localhost:5001/src/services/chartDataService.ts:224:13)
+    at async fetchSymbol (http://localhost:5001/src/App.tsx?t=1778485465774:658:24)
+    at async Promise.allSettled (index 167)
+    at async hydrateWatchlist (http://localhost:5001/src/App.tsx?t=1778485465774:723:25) @ http://localhost:5001/src/utils/logger.ts:75
+[ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:5001/favicon.ico:0
+[ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:5001/favicon.ico:0
+[ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:5001/favicon.ico:0
+[ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:5001/favicon.ico:0
+[ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:5001/favicon.ico:0
+[ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:5001/favicon.ico:0
+[ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:5001/favicon.ico:0
+[ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:5001/favicon.ico:0
+[ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:5001/favicon.ico:0
+[ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:5001/favicon.ico:0
+[ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:5001/favicon.ico:0
+[ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:5001/favicon.ico:0

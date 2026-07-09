@@ -1,6 +1,8 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import './index.css';
+// Side-effect import: exposes window.__autoTrade in DEV for Playwright/console testing
+import './services/_autoTradeTestHelpers';
 import App from './App';
 import ErrorBoundary from './components/ErrorBoundary/ErrorBoundary';
 import { ThemeProvider } from './context/ThemeContext';

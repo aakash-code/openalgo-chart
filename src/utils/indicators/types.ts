@@ -133,6 +133,7 @@ export interface CVDResult {
  */
 export interface CVDOptions {
   anchor?: 'session' | 'total';
+  intervalSeconds?: number;
 }
 
 /**

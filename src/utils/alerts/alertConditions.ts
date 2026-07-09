@@ -533,6 +533,47 @@ export const INDICATOR_ALERT_CONFIGS: IndicatorAlertConfigMap = {
             },
         ],
     },
+
+    volumetricCandlePair: {
+        id: 'volumetricCandlePair',
+        name: 'Volume Centric Pair (VCP)',
+        description: 'Volumetric candle pair zone breakout/breakdown signals',
+        series: ['longBreakout', 'shortBreakdown', 'c1Found', 'c2Found'],
+        defaultConditions: [
+            {
+                id: 'vcp_long_breakout',
+                type: ALERT_CONDITION_TYPES.EQUALS,
+                label: 'Long Breakout Signal',
+                description: 'Alert when price breaks above the VCP zone with trend & delta confirmation',
+                series: 'longBreakout',
+                value: 1,
+            },
+            {
+                id: 'vcp_short_breakdown',
+                type: ALERT_CONDITION_TYPES.EQUALS,
+                label: 'Short Breakdown Signal',
+                description: 'Alert when price breaks below the VCP zone with trend & delta confirmation',
+                series: 'shortBreakdown',
+                value: 1,
+            },
+            {
+                id: 'vcp_c1_found',
+                type: ALERT_CONDITION_TYPES.EQUALS,
+                label: 'C1 Candle Detected',
+                description: 'Alert when the first volume spike candle (C1) is identified',
+                series: 'c1Found',
+                value: 1,
+            },
+            {
+                id: 'vcp_c2_found',
+                type: ALERT_CONDITION_TYPES.EQUALS,
+                label: 'C2 Candle Detected (Zone Formed)',
+                description: 'Alert when the opposite volume spike candle (C2) is identified and the zone is formed',
+                series: 'c2Found',
+                value: 1,
+            },
+        ],
+    },
 };
 
 /**

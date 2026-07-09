@@ -1,6 +1,6 @@
 import React from 'react';
 import type { ComponentType } from 'react';
-import { List, Clock, TrendingUp, Layers, ArrowLeftRight, Brain, Filter, Radar } from 'lucide-react';
+import { List, Clock, TrendingUp, Layers, ArrowLeftRight, Brain, Filter, Radar, Activity, BarChart2, Zap } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import styles from './RightToolbar.module.css';
 import classNames from 'classnames';
@@ -23,7 +23,10 @@ const RightToolbar: React.FC<RightToolbarProps> = ({ activePanel, onPanelChange,
         { id: 'objectTree', icon: Layers, label: 'Object Tree' },
         { id: 'screener', icon: Filter, label: 'Market Screener' },
         { id: 'position_tracker', icon: TrendingUp, label: 'Position Flow' },
+        { id: 'breakout_scanner', icon: Zap, label: 'Breakout Scanner (5m)' },
         { id: 'ann_scanner', icon: Brain, label: 'ANN Scanner' },
+        { id: 'vcp_scanner', icon: Activity, label: 'VCP Scanner (3m)' },
+        { id: 'strategy_test', icon: BarChart2, label: 'Strategy Test' },
         { id: 'tradefinder', icon: Radar, label: 'Tradefinder' },
         { id: 'alerts', icon: Clock, label: 'Alerts' },
         { id: 'dom', icon: Layers, label: 'Depth of Market' },

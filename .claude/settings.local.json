@@ -44,7 +44,29 @@
       "Bash(npm run test:*)",
       "Bash(npm run test:coverage:*)",
       "Bash(npx tsc:*)",
-      "Bash(npm run lint)"
+      "Bash(npm run lint)",
+      "Bash(npm run *)",
+      "Bash(gh api *)",
+      "Bash(npx vitest *)",
+      "Bash(grep -n \"return\\\\|</div>$\" /Users/bond7/Desktop/Project/openalgo-chart/src/components/Topbar/Topbar.tsx)",
+      "Bash(npx playwright *)",
+      "Bash(curl -sf http://localhost:5001)",
+      "mcp__plugin_playwright_playwright__browser_snapshot",
+      "mcp__plugin_playwright_playwright__browser_close",
+      "Bash(ps *)",
+      "Read(//tmp/**)",
+      "Bash(cp ../openalgo-chart/src/utils/indicators/annStrategy.ts ./src/utils/indicators/)",
+      "Bash(cp ../openalgo-chart/src/utils/indicators/cvd.ts ./src/utils/indicators/)",
+      "Bash(cp ../openalgo-chart/src/utils/indicators/institutionalVolumetric.ts ./src/utils/indicators/)",
+      "Bash(cp ../openalgo-chart/src/utils/indicators/patternRecognition.ts ./src/utils/indicators/)",
+      "Bash(cp ../openalgo-chart/src/utils/indicators/riskCalculatorStateService.ts ./src/utils/indicators/)",
+      "Bash(grep -nA 20 \"interface RiskCalculationParams\\\\|type RiskCalculationParams \" /Users/bond7/Desktop/Project/openalgo-chart/src/utils/indicators/riskCalculator.ts)",
+      "Bash(grep -nA 20 \"interface RiskCalculationParams\\\\|type RiskCalculationParams \" /Users/bond7/Desktop/Project/openalgo-chart-fresh/src/utils/indicators/riskCalculator.ts)",
+      "Bash(cp -r /Users/bond7/Desktop/Project/openalgo-chart/src/components/PositionTracker /Users/bond7/Desktop/Project/openalgo-chart-fresh/src/components/)",
+      "Bash(cp -r /Users/bond7/Desktop/Project/openalgo-chart/src/components/VCPScanner /Users/bond7/Desktop/Project/openalgo-chart-fresh/src/components/)",
+      "Bash(cp /Users/bond7/Desktop/Project/openalgo-chart/src/services/vcpBreakoutMonitor.ts /Users/bond7/Desktop/Project/openalgo-chart-fresh/src/services/)",
+      "Bash(cp /Users/bond7/Desktop/Project/openalgo-chart/src/services/vcpScannerService.ts /Users/bond7/Desktop/Project/openalgo-chart-fresh/src/services/)",
+      "Bash(awk 'NR<=660 && NR>=600 && /\\\\{.*\\\\?.*\\\\\\(.*$|\\\\{.*&&.*\\\\\\(.*$/' /Users/bond7/Desktop/Project/openalgo-chart-fresh/src/components/Topbar/Topbar.tsx)"
     ]
   }
 }

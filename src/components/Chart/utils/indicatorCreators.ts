@@ -547,7 +547,24 @@ export const createCVDSeries = (chart: any): { series: any; pane: any } => {
         downColor: '#F23645',
         borderVisible: false,
         wickVisible: true,
-        title: 'CVD'
+        title: 'CVD',
+        priceFormat: {
+            type: 'custom',
+            formatter: (price: number) => {
+                const abs = Math.abs(price);
+                const sign = price < 0 ? '-' : '';
+                if (abs >= 1_000_000) {
+                    const v = Number((abs / 1_000_000).toFixed(2));
+                    return `${sign}${v}M`;
+                }
+                if (abs >= 1_000) {
+                    const v = Number((abs / 1_000).toFixed(1));
+                    return `${sign}${v}K`;
+                }
+                return `${sign}${abs.toFixed(0)}`;
+            },
+            minMove: 1,
+        }
     });
 
     // Add Neutral Line at 0

@@ -1,0 +1,58 @@
+.badgeAnalyze,
+.badgeLive {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  user-select: none;
+  border: 1px solid transparent;
+  transition: filter 0.15s ease, box-shadow 0.15s ease;
+}
+
+.badgeAnalyze {
+  background: rgba(245, 158, 11, 0.12);
+  color: #f59e0b;
+  border-color: rgba(245, 158, 11, 0.35);
+}
+.badgeAnalyze:hover:not(:disabled) {
+  filter: brightness(1.15);
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.18);
+}
+
+.badgeLive {
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.45);
+}
+.badgeLive:hover:not(:disabled) {
+  filter: brightness(1.15);
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.22);
+}
+
+.badgeAnalyze:disabled,
+.badgeLive:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.logCount {
+  margin-left: 2px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.18);
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.spinning {
+  animation: spin 1s linear infinite;
+}
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}

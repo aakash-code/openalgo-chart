@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import type { ReactElement, ChangeEvent, FormEvent, MouseEvent } from 'react';
+import type { ReactElement, ReactNode, ChangeEvent, FormEvent, MouseEvent } from 'react';
 import styles from './Topbar.module.css';
 import classNames from 'classnames';
 import { intervalToSeconds } from '../../utils/timeframes';
@@ -88,6 +88,8 @@ export interface TopbarProps {
     onAddIndicator?: (indicator: string) => void;
     onPineEditorClick?: () => void;
     isPineEditorOpen?: boolean;
+    /** Optional element rendered at the far right of the toolbar (before snapshot icon). Used for status badges. */
+    rightSlot?: ReactNode;
     // Sync props
     isSyncEnabled?: boolean;
     syncOptions?: {
@@ -112,6 +114,7 @@ const Topbar: React.FC<TopbarProps> = ({
     onStraddleClick, strategyConfig = null,
     onOptionsClick, onHeatmapClick, onAddIndicator,
     onPineEditorClick, isPineEditorOpen = false,
+    rightSlot,
     // Sync props
     isSyncEnabled = false,
     syncOptions = { symbol: true, interval: true, crosshair: true, time: true },
@@ -996,6 +999,11 @@ const Topbar: React.FC<TopbarProps> = ({
                                                         </div>
                                                     </button>
                                                 </Tooltip>
+                                                {rightSlot ? (
+                                                    <div style={{ display: 'flex', alignItems: 'center', marginLeft: 8, marginRight: 4 }}>
+                                                        {rightSlot}
+                                                    </div>
+                                                ) : null}
                                                 <div className={styles.snapshotSection} ref={snapshotRef}>
                                                     <Tooltip content="Chart Snapshot" position="bottom">
                                                         <button

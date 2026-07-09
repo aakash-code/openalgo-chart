@@ -93,7 +93,7 @@ const PositionTracker: React.FC<PositionTrackerProps> = ({
     const searchInputRef = useRef<HTMLInputElement>(null);
     const listRef = useRef<HTMLDivElement>(null);
     const previousRanksRef = useRef<Map<string, number>>(new Map());
-    const openingRanksRef = useRef<Map<string, number>>(new Map());
+    const [openingRanks, setOpeningRanks] = useState<Record<string, number>>({});
     const hasSetOpeningRanks = useRef(false);
     const startXRef = useRef(0);
     const startWidthRef = useRef(0);
@@ -204,13 +204,12 @@ const PositionTracker: React.FC<PositionTrackerProps> = ({
 
         const sorted = [...dataToRank].sort((a, b) => b.percentChange - a.percentChange);
 
+        // eslint-disable-next-line react-hooks/refs -- intentional: reading previousRanks across renders without causing re-renders
         return sorted.map((item, index) => {
             const key = `${item.symbol}-${item.exchange}`;
             const previousRank = previousRanksRef.current.get(key) ?? (index + 1);
             const currentRank = index + 1;
             const rankChange = previousRank - currentRank;
-
-            previousRanksRef.current.set(key, currentRank);
 
             return {
                 ...item,
@@ -221,19 +220,28 @@ const PositionTracker: React.FC<PositionTrackerProps> = ({
         });
     }, [watchlistData, sourceMode, customSymbols]);
 
-    // Capture opening ranks once when market opens
+    // Update previous ranks after each committed render
+    useEffect(() => {
+        rankedData.forEach(item => {
+            const key = `${item.symbol}-${item.exchange}`;
+            previousRanksRef.current.set(key, item.currentRank);
+        });
+    }, [rankedData]);
+
+    // Capture opening ranks once when market opens — stored in state so displayData re-renders
     useEffect(() => {
         if (marketState.isOpen && rankedData.length > 0 && !hasSetOpeningRanks.current) {
+            const ranks: Record<string, number> = {};
             rankedData.forEach(item => {
-                const key = `${item.symbol}-${item.exchange}`;
-                openingRanksRef.current.set(key, item.currentRank);
+                ranks[`${item.symbol}-${item.exchange}`] = item.currentRank;
             });
+            setOpeningRanks(ranks);
             hasSetOpeningRanks.current = true;
         }
 
         if (!marketState.isOpen) {
             hasSetOpeningRanks.current = false;
-            openingRanksRef.current.clear();
+            setOpeningRanks({});
         }
     }, [marketState.isOpen, rankedData]);
 
@@ -245,7 +253,7 @@ const PositionTracker: React.FC<PositionTrackerProps> = ({
 
         return rankedData.map(item => {
             const key = `${item.symbol}-${item.exchange}`;
-            const openingRank = openingRanksRef.current.get(key);
+            const openingRank = openingRanks[key];
 
             return {
                 ...item,
@@ -255,7 +263,7 @@ const PositionTracker: React.FC<PositionTrackerProps> = ({
                 isVolumeSpike: item.volume > spikeThreshold,
             };
         });
-    }, [rankedData]);
+    }, [rankedData, openingRanks]);
 
     // Filter data based on sector and filter mode
     const filteredData = useMemo((): DisplayItem[] => {

@@ -25,6 +25,16 @@ import { calculateHilengaMilenga } from '../../../utils/indicators/hilengaMileng
 import { CHART_COLORS } from '../../../utils/colorUtils';
 import { IndicatorConfig } from './indicatorCreators';
 
+// Module-level cache for CVD lower-timeframe (1-min) data
+// Set by ChartComponent when CVD indicator is active
+let _cvdLowerTFData: OHLCData[] | null = null;
+let _cvdIntervalSeconds = 180;
+
+export const setCVDLowerTFData = (data: OHLCData[] | null, intervalSeconds: number): void => {
+    _cvdLowerTFData = data;
+    _cvdIntervalSeconds = intervalSeconds;
+};
+
 export interface OHLCData {
     time: number;
     open: number;
@@ -455,7 +465,11 @@ export const updateCVDSeries = (series: any, ind: IndicatorConfig, data: OHLCDat
         downColor: ind.colorDown || '#F23645'
     });
 
-    const val = calculateCVD(data);
+    const val = calculateCVD(
+        data,
+        { intervalSeconds: _cvdIntervalSeconds },
+        _cvdLowerTFData ?? undefined
+    );
     if (val) {
         const colored = val.map((d: any) => ({
             time: d.time,

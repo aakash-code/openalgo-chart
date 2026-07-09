@@ -1,35 +1,32 @@
 /**
  * Cumulative Volume Delta (CVD) Indicator
- * 
- * CVD is a technical indicator that sums the volume delta over a period of time.
- * Volume delta is the difference between buy volume and sell volume for a given price bar.
- * 
- * Since we don't have true tick data (buy vs sell volume), we approximate delta using 
- * candle direction and body/wick ratios.
+ *
+ * When 1-min lower-timeframe data is available, delta for each bar is computed
+ * by summing 1-min bar deltas within that bar's time window — exactly how
+ * PineScript's ta.requestVolumeDelta(lowerTimeframe) works internally.
+ * Wicks also come from the running 1-min CVD peak/trough within each bar.
+ *
+ * Without LTF data, falls back to current-TF bar direction (close vs open).
  */
 
 import { OHLCData, CVDResult, CVDOptions } from './types';
 import { getISTComponents } from './timeUtils';
 
-/**
- * Calculate Cumulative Volume Delta
- * 
- * @param data - OHLCV data
- * @param options - CVD calculation options
- * @returns Array of CVD points as candles
- */
-export const calculateCVD = (data: OHLCData[], options: CVDOptions = {}): CVDResult[] => {
+export const calculateCVD = (data: OHLCData[], options: CVDOptions = {}, lowerTFData?: OHLCData[]): CVDResult[] => {
     if (!data || data.length === 0) return [];
 
-    const { anchor = 'session' } = options;
+    const { anchor = 'session', intervalSeconds = 180 } = options;
     const results: CVDResult[] = [];
     let cumulativeDelta = 0;
     let lastDateStr = '';
+    let ltfIndex = 0; // pointer into sorted lowerTFData for O(n) scan
+
+    const ltf = lowerTFData && lowerTFData.length > 0 ? lowerTFData : null;
 
     for (let i = 0; i < data.length; i++) {
         const bar = data[i];
-        
-        // Session Reset Logic
+
+        // Reset CVD at session boundary
         if (anchor === 'session') {
             const { dateStr } = getISTComponents(bar.time);
             if (lastDateStr && dateStr !== lastDateStr) {
@@ -38,40 +35,57 @@ export const calculateCVD = (data: OHLCData[], options: CVDOptions = {}): CVDRes
             lastDateStr = dateStr;
         }
 
-        const volume = bar.volume || 0;
-        
-        // PRO Wick-Based Volume Partitioning (Institutional Grade)
-        // Buying Pressure = Vol * (Close - Low) / (High - Low)
-        // Selling Pressure = Vol * (High - Close) / (High - Low)
-        
-        let delta = 0;
-        const range = bar.high - bar.low;
-        
-        if (range > 0) {
-            const buyingPressure = volume * (bar.close - bar.low) / range;
-            const sellingPressure = volume * (bar.high - bar.close) / range;
-            delta = buyingPressure - sellingPressure;
-        } else {
-            // Doji or no range - use minimal logic
-            delta = 0;
-        }
-
         const open = cumulativeDelta;
-        cumulativeDelta += delta;
-        const close = cumulativeDelta;
-        
-        // High/Low for the CVD candle
-        const high = Math.max(open, close);
-        const low = Math.min(open, close);
+        let delta = 0;
+        let high: number;
+        let low: number;
 
-        results.push({
-            time: bar.time,
-            open,
-            high,
-            low,
-            close,
-            delta
-        });
+        if (ltf) {
+            // Use 1-min bars for both DELTA and WICKS (matches ta.requestVolumeDelta)
+            const barEnd = i + 1 < data.length ? data[i + 1].time : bar.time + intervalSeconds;
+
+            // Advance pointer past bars before this 3-min bar
+            while (ltfIndex < ltf.length && ltf[ltfIndex].time < bar.time) ltfIndex++;
+
+            let intraCVD = open;
+            let wickHigh = open;
+            let wickLow = open;
+            let found = false;
+
+            for (let j = ltfIndex; j < ltf.length; j++) {
+                const ltfBar = ltf[j];
+                if (ltfBar.time >= barEnd) break;
+                const ltfVol = ltfBar.volume || 0;
+                const ltfDelta = ltfBar.close > ltfBar.open ? ltfVol :
+                                 ltfBar.close < ltfBar.open ? -ltfVol : 0;
+                delta += ltfDelta;
+                intraCVD += ltfDelta;
+                if (intraCVD > wickHigh) wickHigh = intraCVD;
+                if (intraCVD < wickLow) wickLow = intraCVD;
+                found = true;
+            }
+
+            cumulativeDelta = open + delta;
+            const close = cumulativeDelta;
+
+            high = found ? Math.max(wickHigh, close) : Math.max(open, close);
+            low  = found ? Math.min(wickLow,  close) : Math.min(open, close);
+
+            results.push({ time: bar.time, open, high, low, close, delta });
+        } else {
+            // Fallback: classify by current-TF bar direction
+            const volume = bar.volume || 0;
+            if (bar.close > bar.open) delta = volume;
+            else if (bar.close < bar.open) delta = -volume;
+
+            cumulativeDelta += delta;
+            const close = cumulativeDelta;
+
+            high = Math.max(open, close);
+            low  = Math.min(open, close);
+
+            results.push({ time: bar.time, open, high, low, close, delta });
+        }
     }
 
     return results;

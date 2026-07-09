@@ -33,18 +33,13 @@ export interface TemplateSelectorProps {
  * Allows users to select preset templates or save custom ones
  */
 const TemplateSelector: FC<TemplateSelectorProps> = ({ currentValues, onTemplateSelect }) => {
-    const [templates, setTemplates] = useState<Template[]>([]);
+    const [templates, setTemplates] = useState<Template[]>(() => getTemplates() as Template[]);
     const [selectedTemplateId, setSelectedTemplateId] = useState('custom');
     const [showSaveDialog, setShowSaveDialog] = useState(false);
     const [newTemplateName, setNewTemplateName] = useState('');
 
-    useEffect(() => {
-        loadTemplates();
-    }, []);
-
     const loadTemplates = (): void => {
-        const allTemplates = getTemplates() as Template[];
-        setTemplates(allTemplates);
+        setTemplates(getTemplates() as Template[]);
     };
 
     const handleTemplateChange = (event: ChangeEvent<HTMLSelectElement>): void => {

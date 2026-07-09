@@ -5,7 +5,10 @@ import styles from './DepthOfMarket.module.css';
 import logger from '../../utils/logger';
 import { formatCompactNumber, formatPrice } from '../../utils/shared/formatters';
 
-const AUTO_REFRESH_INTERVAL = 1000; // 1 second refresh interval
+// 2.5s: most broker DOM feeds only update at ~1-2 Hz natively, and 1s polling
+// was burning ~60 req/min per open panel — enough on its own to push Zerodha
+// past its 3 req/sec cap once other activity (charts, scans, OI) layered on top.
+const AUTO_REFRESH_INTERVAL = 2500;
 
 interface DepthLevel {
     price: number;

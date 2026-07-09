@@ -14,6 +14,7 @@ import {
   calculateEMA,
   calculateATR,
 } from '../utils/indicators';
+import { calculateVolumetricCandlePair } from '../utils/indicators/volumetricCandlePair';
 import logger from '../utils/logger';
 
 // ==================== TYPES ====================
@@ -427,6 +428,7 @@ export class IndicatorDataManager {
       if (macdData && macdData.length >= 2) {
         const latest = macdData[macdData.length - 1];
         const previous = macdData[macdData.length - 2];
+        const prevPrevious = macdData.length >= 3 ? macdData[macdData.length - 3] : undefined;
         results.macd = {
           macd: latest?.MACD,
           signal: latest?.signal,
@@ -435,11 +437,11 @@ export class IndicatorDataManager {
             macd: previous?.MACD,
             signal: previous?.signal,
             histogram: previous?.histogram,
-            previous: {
-              macd: previous?.MACD,
-              signal: previous?.signal,
-              histogram: previous?.histogram,
-            },
+            previous: prevPrevious ? {
+              macd: prevPrevious.MACD,
+              signal: prevPrevious.signal,
+              histogram: prevPrevious.histogram,
+            } : undefined,
           },
           time: latest?.time,
         };
@@ -776,6 +778,27 @@ export class IndicatorDataManager {
             current = { value: latest?.value, time: latest?.time };
             previous = { value: prev?.value, time: prev?.time };
           }
+          break;
+        }
+
+        case 'volumetriccandlepair':
+        case 'vcp': {
+          const vcpResult = calculateVolumetricCandlePair(slicedData, {});
+          // Build a time→signal map from the generated markers
+          const signalByTime = new Map<number, Record<string, number>>();
+          for (const marker of vcpResult.markers) {
+            const existing = signalByTime.get(marker.time) ?? { c1Found: 0, c2Found: 0, longBreakout: 0, shortBreakdown: 0 };
+            if (marker.text === 'C1') existing.c1Found = 1;
+            else if (marker.text === 'C2') existing.c2Found = 1;
+            else if (marker.text.startsWith('Long')) existing.longBreakout = 1;
+            else if (marker.text.startsWith('Short')) existing.shortBreakdown = 1;
+            signalByTime.set(marker.time, existing);
+          }
+          const empty = { c1Found: 0, c2Found: 0, longBreakout: 0, shortBreakdown: 0 };
+          const lastBar = slicedData[slicedData.length - 1];
+          const prevBar = slicedData[slicedData.length - 2];
+          current = { ...empty, ...(lastBar ? signalByTime.get(lastBar.time) : {}), time: lastBar?.time };
+          previous = { ...empty, ...(prevBar ? signalByTime.get(prevBar.time) : {}), time: prevBar?.time };
           break;
         }
 

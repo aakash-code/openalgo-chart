@@ -53,17 +53,38 @@ export default defineConfig({
       '/api': {
         target: 'http://127.0.0.1:5000',
         changeOrigin: true,
+        configure: (proxy) => {
+          proxy.on('error', (_err, _req, res) => {
+            if ('writeHead' in res) {
+              res.writeHead(503, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: 'Backend unavailable' }));
+            }
+          });
+        },
       },
       '/ws': {
         target: 'ws://127.0.0.1:8765',
         ws: true,
         changeOrigin: true,
+        configure: (proxy) => {
+          proxy.on('error', (_err, _req, res) => {
+            if ('destroy' in res) res.destroy();
+          });
+        },
       },
       '/npl-time': {
         target: 'https://www.nplindia.in',
         changeOrigin: true,
         rewrite: (p) => p.replace(/^\/npl-time/, '/cgi-bin/ntp_client'),
         secure: true,
+        configure: (proxy) => {
+          proxy.on('error', (_err, _req, res) => {
+            if ('writeHead' in res) {
+              res.writeHead(503, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: 'NTP unavailable' }));
+            }
+          });
+        },
       },
     },
   },
